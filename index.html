@@ -1,0 +1,2131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orbita MIDI Control</title>
+    <style>
+        :root {
+            --bg: #181818;
+            --surface: #202020;
+            --surface-2: #262626;
+            --border: #343434;
+            --text: #F5F5F2;
+            --muted: #9B9B96;
+            --accent: #7CFF5B;
+            --space-1: 4px;
+            --space-2: 8px;
+            --space-3: 16px;
+            --space-4: 24px;
+            --space-5: 32px;
+            --radius: 6px;
+            --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            --font-mono: ui-monospace, 'SF Mono', 'Roboto Mono', 'Courier New', monospace;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100%; }
+        body {
+            font-family: var(--font-ui);
+            background: var(--bg);
+            color: var(--text);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        button, select, input { font-family: inherit; }
+
+        :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+        @media (prefers-reduced-motion: reduce) {
+            * { transition: none !important; animation: none !important; }
+        }
+
+        /* ===== App shell ===== */
+        .app { height: 100vh; display: flex; flex-direction: column; }
+        .app-body { flex: 1; display: flex; min-height: 0; }
+
+        .app-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: var(--space-3) var(--space-4);
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+            flex-shrink: 0;
+        }
+        .brand { font-size: 15px; font-weight: 700; letter-spacing: .08em; }
+        .header-right { display: flex; align-items: center; gap: var(--space-4); }
+        .status-pill { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+        .status-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: #ff5a4e;
+            animation: pulse 2s infinite;
+        }
+        .status-dot.connected { background: var(--accent); animation: none; }
+        .status-dot.scanning { background: #ffb454; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+
+        .icon-btn {
+            background: none; border: 1px solid transparent; color: var(--muted);
+            cursor: pointer; padding: 6px 12px; border-radius: var(--radius);
+            font-size: 15px; letter-spacing: 2px;
+        }
+        .icon-btn:hover { color: var(--text); background: var(--surface-2); }
+        .icon-btn.active { color: var(--bg); background: var(--accent); }
+
+        /* ===== Rail ===== */
+        .rail {
+            width: 220px; flex-shrink: 0;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            padding: var(--space-4) var(--space-3);
+            display: flex; flex-direction: column; gap: var(--space-4);
+            overflow-y: auto;
+        }
+        .rail-group { display: flex; flex-direction: column; gap: 2px; }
+        .rail-label {
+            font-size: 11px; font-weight: 600; color: var(--muted);
+            text-transform: uppercase; letter-spacing: .07em;
+            padding: 0 var(--space-2) 6px;
+        }
+        .rail-item {
+            display: flex; align-items: center; gap: var(--space-2);
+            padding: 9px var(--space-2);
+            border-radius: var(--radius);
+            background: none; border: none;
+            color: var(--muted);
+            font-size: 13px;
+            text-align: left; cursor: pointer;
+            width: 100%;
+        }
+        .rail-item:hover { color: var(--text); }
+        .rail-item.active { background: var(--surface-2); color: var(--text); font-weight: 600; }
+        .rail-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); flex-shrink: 0; }
+        .rail-dot.on { background: var(--accent); }
+        .rail-spacer { flex: 1; }
+
+        /* ===== Canvas ===== */
+        .canvas { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+        .canvas-scroll { flex: 1; overflow-y: auto; padding: var(--space-5); }
+        .canvas-scroll-inner { max-width: 760px; }
+
+        .view-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-4); }
+        .view-title { font-size: 24px; font-weight: 600; text-wrap: balance; }
+        .switch-row { display: flex; align-items: center; gap: var(--space-3); }
+        .switch-row .row-label { width: auto; }
+        .view-note { color: var(--muted); font-size: 12px; margin-bottom: var(--space-4); max-width: 60ch; }
+
+        .save-bar { padding: var(--space-3) var(--space-5); border-top: 1px solid var(--border); flex-shrink: 0; }
+        .btn-save {
+            width: 100%; padding: 14px; border: none; border-radius: var(--radius);
+            background: var(--accent); color: #0f1a0b; font-weight: 700; font-size: 14px;
+            cursor: pointer;
+        }
+        .btn-save:hover { filter: brightness(1.06); }
+
+        /* ===== Control row ===== */
+        .control-row {
+            display: flex; align-items: center; gap: var(--space-3);
+            padding: var(--space-3) 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .control-row:last-child { border-bottom: none; }
+        .row-label { width: 168px; flex-shrink: 0; color: var(--muted); font-size: 13px; }
+        .control-row .switch { margin-left: auto; }
+        .row-value {
+            width: 68px; flex-shrink: 0; text-align: right;
+            font-family: var(--font-mono); font-weight: 600; font-size: 13px;
+        }
+
+        /* ===== Components: switch ===== */
+        .switch {
+            width: 40px; height: 22px; border-radius: 999px;
+            background: var(--surface-2); border: 1px solid var(--border);
+            position: relative; cursor: pointer; padding: 0; flex-shrink: 0;
+            transition: background .15s ease;
+        }
+        .switch .switch-dot {
+            position: absolute; top: 2px; left: 2px;
+            width: 16px; height: 16px; border-radius: 50%;
+            background: var(--muted);
+            transition: transform .15s ease, background .15s ease;
+        }
+        .switch.on .switch-dot { background: var(--accent); transform: translateX(18px); }
+
+        /* ===== Components: segmented control ===== */
+        .segmented {
+            display: inline-flex; background: var(--bg);
+            border: 1px solid var(--border); border-radius: var(--radius);
+            overflow: hidden; flex: 1; max-width: 220px;
+        }
+        .seg-btn {
+            flex: 1; padding: 8px 14px; background: transparent; border: none;
+            color: var(--muted); font-weight: 600; font-size: 13px; cursor: pointer;
+        }
+        .seg-btn.active { background: var(--surface-2); color: var(--text); }
+
+        /* ===== Components: select ===== */
+        .select {
+            appearance: none; -webkit-appearance: none;
+            background: var(--bg)
+                url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%239B9B96'/%3E%3C/svg%3E")
+                no-repeat right 12px center;
+            border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 8px 30px 8px 12px;
+            color: var(--text); font-size: 13px; cursor: pointer;
+            flex: 1; max-width: 280px;
+        }
+        .select option, .select optgroup { background: var(--surface); color: var(--text); }
+
+        .number-input {
+            background: var(--bg);
+            border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 8px 12px;
+            color: var(--text); font-size: 13px;
+            max-width: 120px;
+        }
+
+        /* ===== Components: slider ===== */
+        .slider {
+            -webkit-appearance: none; appearance: none;
+            flex: 1; height: 2px; background: var(--border); outline: none; cursor: pointer;
+        }
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 13px; height: 13px; border-radius: 50%;
+            background: var(--text); cursor: pointer; margin-top: -5.5px;
+        }
+        .slider::-moz-range-thumb {
+            width: 13px; height: 13px; border-radius: 50%;
+            background: var(--text); border: none; cursor: pointer;
+        }
+        .slider:disabled { opacity: .35; cursor: not-allowed; }
+
+        /* ===== Components: accordion ===== */
+        .accordion { border-top: 1px solid var(--border); }
+        .accordion-section { border-bottom: 1px solid var(--border); }
+        .accordion-header {
+            width: 100%; display: flex; align-items: baseline; gap: var(--space-2);
+            padding: var(--space-3) 0; background: none; border: none; color: var(--text);
+            cursor: pointer; text-align: left;
+        }
+        .accordion-icon { width: 14px; color: var(--muted); font-weight: 600; flex-shrink: 0; }
+        .accordion-title {
+            font-size: 13px; font-weight: 600; letter-spacing: .05em;
+            text-transform: uppercase; flex-shrink: 0;
+        }
+        .accordion-summary { font-size: 12px; color: var(--muted); }
+        .accordion-body { display: none; padding: 0 0 var(--space-4) 22px; }
+        .accordion-section.open .accordion-body { display: block; }
+
+        /* ===== Components: mapping row ===== */
+        .mapping-list { margin-top: var(--space-2); border-top: 1px solid var(--border); }
+        .mapping-row {
+            display: flex; align-items: center; gap: var(--space-2);
+            padding: 10px 0; border-bottom: 1px solid var(--border);
+        }
+        .mapping-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .mapping-label { font-size: 13px; }
+        .mapping-value {
+            margin-left: auto; background: transparent; border: none;
+            color: var(--text); font-family: var(--font-mono); font-weight: 600;
+            font-size: 13px; text-align: right; cursor: pointer;
+            appearance: none; -webkit-appearance: none; padding: 4px;
+        }
+        .mapping-value option { background: var(--surface); color: var(--text); }
+
+        .link-btn {
+            background: none; border: none; color: var(--accent);
+            font-size: 12px; font-weight: 600; cursor: pointer;
+            padding: var(--space-2) 0 0; margin-top: var(--space-1);
+        }
+        .link-btn:hover { text-decoration: underline; }
+
+        /* ===== Debug block ===== */
+        .debug-block {
+            margin-top: var(--space-3); padding: var(--space-3);
+            background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+            font-family: var(--font-mono); font-size: 11px; color: var(--muted);
+        }
+        .debug-row { display: flex; justify-content: space-between; padding: 3px 0; }
+
+        /* ===== Sections (Motor / Extra views) ===== */
+        .section-block { margin-bottom: var(--space-5); }
+        .section-block:last-child { margin-bottom: 0; }
+        .section-heading { font-size: 15px; font-weight: 600; margin-bottom: var(--space-2); }
+
+        /* ===== Views ===== */
+        .view[hidden] { display: none; }
+
+        /* ===== Monitor drawer ===== */
+        .monitor-drawer {
+            width: 0; flex-shrink: 0; overflow: hidden;
+            background: var(--surface); border-left: 1px solid transparent;
+            transition: width .18s ease;
+        }
+        .monitor-drawer.open { width: 340px; border-left-color: var(--border); }
+        .drawer-inner {
+            width: 340px; height: 100%; display: flex; flex-direction: column;
+            padding: var(--space-4); gap: var(--space-3);
+        }
+        .drawer-header { display: flex; align-items: center; justify-content: space-between; }
+        .drawer-title { font-size: 15px; font-weight: 600; }
+
+        .filter-section { display: flex; flex-direction: column; gap: var(--space-3); }
+        .filter-title {
+            font-size: 11px; font-weight: 600; color: var(--muted);
+            text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px;
+        }
+        .filter-options { display: flex; flex-wrap: wrap; gap: 8px 12px; }
+        .filter-checkbox { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+        .filter-checkbox input[type="checkbox"] {
+            width: 14px; height: 14px; cursor: pointer;
+            appearance: none; -webkit-appearance: none;
+            border: 2px solid var(--border); border-radius: 3px;
+            position: relative;
+        }
+        .filter-checkbox input[type="checkbox"]:checked {
+            background: var(--filter-color); border-color: var(--filter-color);
+        }
+        .filter-checkbox input[type="checkbox"]:checked::after {
+            content: '✓'; position: absolute; color: #000; font-size: 10px; font-weight: bold;
+            top: 50%; left: 50%; transform: translate(-50%, -50%);
+        }
+        #filterInNotes { --filter-color: #FF9800; }
+        #filterInCC { --filter-color: #2196F3; }
+        #filterInRealtime { --filter-color: #00BCD4; }
+        #filterInOther { --filter-color: #FFC107; }
+        #filterOutNotes { --filter-color: #E91E63; }
+        #filterOutCC { --filter-color: #9C27B0; }
+        #filterOutRealtime { --filter-color: #673AB7; }
+        #filterOutOther { --filter-color: #FF5722; }
+        .filter-checkbox label { font-size: 11px; color: var(--muted); cursor: pointer; }
+
+        .drawer-messages {
+            flex: 1; overflow-y: auto;
+            font-family: var(--font-mono); font-size: 11px; line-height: 1.6;
+            border-top: 1px solid var(--border); padding-top: var(--space-2);
+        }
+        .midi-message {
+            padding: 6px 8px; margin-bottom: 4px; border-radius: 4px;
+            background: var(--bg); border-left: 3px solid var(--accent);
+        }
+        .midi-message.cc[data-direction="incoming"] { border-left-color: #2196F3; }
+        .midi-message.note-on[data-direction="incoming"] { border-left-color: #FF9800; }
+        .midi-message.note-off[data-direction="incoming"] { border-left-color: #FF9800; opacity: .7; }
+        .midi-message.realtime[data-direction="incoming"] { border-left-color: #00BCD4; }
+        .midi-message.other[data-direction="incoming"] { border-left-color: #FFC107; }
+        .midi-message.note-on[data-direction="outgoing"],
+        .midi-message.note-off[data-direction="outgoing"] { border-left-color: #E91E63; }
+        .midi-message.cc[data-direction="outgoing"],
+        .midi-message.sent[data-direction="outgoing"] { border-left-color: #9C27B0; }
+        .midi-message.realtime[data-direction="outgoing"] { border-left-color: #673AB7; }
+        .midi-message.other[data-direction="outgoing"] { border-left-color: #FF5722; }
+        .midi-message[data-direction="system"] { border-left-color: var(--accent); }
+        .midi-message.error[data-direction="system"] { border-left-color: #f44336; }
+        .timestamp { color: var(--muted); }
+
+        .btn-secondary {
+            padding: 9px; border: 1px solid var(--border); border-radius: var(--radius);
+            background: var(--surface-2); color: var(--text); cursor: pointer; font-size: 12px;
+        }
+        .btn-secondary:hover { background: var(--border); }
+
+        /* ===== Help tables ===== */
+        .table-wrap { overflow-x: auto; margin-bottom: var(--space-3); }
+        .cc-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .cc-table th {
+            text-align: left; font-weight: 600; color: var(--muted);
+            font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+            padding: 8px 10px 8px 0; border-bottom: 1px solid var(--border);
+        }
+        .cc-table td { padding: 8px 10px 8px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
+        .cc-table td.num { font-family: var(--font-mono); font-weight: 600; white-space: nowrap; }
+        .cc-table td.desc { color: var(--muted); }
+        .help-list { color: var(--muted); font-size: 12px; padding-left: 18px; margin-bottom: var(--space-3); max-width: 70ch; }
+        .help-list li { margin-bottom: 4px; }
+        .help-list b, .view-note b { color: var(--text); font-weight: 600; }
+
+        /* ===== Router ===== */
+        .map-row { display: flex; align-items: center; gap: var(--space-2); padding: 10px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+        .map-row .number-input { width: 76px; }
+        .map-row .select { max-width: 300px; }
+        .map-arrow { color: var(--muted); }
+        .btn-small {
+            padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius);
+            background: var(--surface-2); color: var(--text); cursor: pointer; font-size: 12px;
+        }
+        .btn-small:hover { background: var(--border); }
+        .btn-small.learning { background: var(--accent); color: #0f1a0b; border-color: var(--accent); }
+        .router-activity { font-family: var(--font-mono); font-size: 12px; color: var(--muted); min-height: 18px; }
+
+        @media (max-width: 860px) {
+            .app-body { flex-direction: column; }
+            .rail { width: 100%; flex-direction: row; flex-wrap: wrap; overflow-x: auto; border-right: none; border-bottom: 1px solid var(--border); }
+            .rail-spacer { display: none; }
+            .monitor-drawer.open { position: fixed; inset: 0; top: 53px; width: 100%; z-index: 50; }
+            .drawer-inner { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <header class="app-header">
+            <div class="brand">ORBITA</div>
+            <div class="header-right">
+                <div class="status-pill">
+                    <span class="status-dot" id="statusIndicator"></span>
+                    <span id="statusText">Disconnected</span>
+                </div>
+                <button class="icon-btn" id="overflowBtn" title="Extra / Automation">•••</button>
+            </div>
+        </header>
+
+        <div class="app-body">
+            <nav class="rail">
+                <div class="rail-group">
+                    <div class="rail-label">Device</div>
+                    <button class="rail-item" data-view="motor">Motor</button>
+                    <button class="rail-item" data-view="scale">Scale</button>
+                    <button class="rail-item" data-view="router"><span class="rail-dot" id="railDotRouter"></span>MIDI Router</button>
+                </div>
+                <div class="rail-group">
+                    <div class="rail-label">Tracks</div>
+                    <button class="rail-item" data-view="track0"><span class="rail-dot on" id="railDot0"></span>Track 1</button>
+                    <button class="rail-item" data-view="track1"><span class="rail-dot on" id="railDot1"></span>Track 2</button>
+                    <button class="rail-item" data-view="track2"><span class="rail-dot on" id="railDot2"></span>Track 3</button>
+                    <button class="rail-item" data-view="track3"><span class="rail-dot on" id="railDot3"></span>Track 4</button>
+                </div>
+                <div class="rail-spacer"></div>
+                <button class="rail-item" data-view="help">Help · CC list</button>
+                <button class="rail-item" id="monitorRailItem">Monitor</button>
+            </nav>
+
+            <main class="canvas">
+                <div class="canvas-scroll">
+                    <div class="canvas-scroll-inner" id="canvasContent">
+
+                        <section class="view" id="view-motor" hidden>
+                            <div class="view-header"><h1 class="view-title">Motor</h1></div>
+                            <div class="control-row">
+                                <div class="row-label">Motor State</div>
+                                <button class="switch" id="motorToggle" role="switch" aria-checked="false"><span class="switch-dot"></span></button>
+                            </div>
+                            <div class="control-row">
+                                <div class="row-label">Speed</div>
+                                <input type="range" class="slider" id="motorSpeed" min="0" max="127" value="64">
+                                <div class="row-value" id="motorSpeedValue">64</div>
+                            </div>
+                            <div class="control-row">
+                                <div class="row-label">Direction</div>
+                                <div class="segmented">
+                                    <button class="seg-btn active" id="motorDirCW" type="button">Clockwise</button>
+                                    <button class="seg-btn" id="motorDirCCW" type="button">Counter-clockwise</button>
+                                </div>
+                            </div>
+                            <p class="view-note">Direction is CC 82: 127 = clockwise, 0 = counter-clockwise. The motor brakes and restarts the other way. Turning the encoder past minimum speed also reverses it.</p>
+                        </section>
+
+                        <section class="view" id="view-scale" hidden>
+                            <div class="view-header"><h1 class="view-title">Scale</h1></div>
+                            <p class="view-note">Root note lands on Track 1 / Red. The scale's intervals step forward, color by color, track by track, through Track 4 / Pink — shared by all 4 tracks. Edit the resulting notes per-track inside each track's Mapping section.</p>
+                            <div class="scale-controls-slot" id="scaleControlsSlotDevice"></div>
+                        </section>
+
+                        <div id="tracksContainer"></div>
+
+                        <section class="view" id="view-router" hidden>
+                            <div class="view-header">
+                                <h1 class="view-title">MIDI Router</h1>
+                                <div class="switch-row">
+                                    <span class="row-label">Enabled</span>
+                                    <button class="switch" id="routerToggle" role="switch" aria-checked="false"><span class="switch-dot"></span></button>
+                                </div>
+                            </div>
+                            <p class="view-note">Plays any MIDI controller or keyboard into Orbita, with no DAW in between. Everything goes out on <b>channel 1</b>, the only channel Orbita listens on. Map your controller's knobs to Orbita parameters below. Keep this page open while you play.</p>
+
+                            <div class="control-row">
+                                <div class="row-label">MIDI Input</div>
+                                <select class="select" id="routerInputSelect">
+                                    <option value="">-- Select MIDI Input --</option>
+                                </select>
+                            </div>
+                            <div class="control-row">
+                                <div class="row-label">Listen on channel</div>
+                                <select class="select" id="routerChannelSelect"></select>
+                            </div>
+                            <div class="control-row">
+                                <div class="row-label">Forward notes</div>
+                                <button class="switch on" id="routerNotesToggle" role="switch" aria-checked="true"><span class="switch-dot"></span></button>
+                            </div>
+                            <p class="view-note">Hold a note and all 4 tracks play it instead of the color mapping: Track 1 at the played pitch, Tracks 2–4 one, two and three octaves higher. Release the note and tracks go back to colors.</p>
+                            <div class="control-row">
+                                <div class="row-label">Pass unmapped CCs</div>
+                                <button class="switch on" id="routerPassCCToggle" role="switch" aria-checked="true"><span class="switch-dot"></span></button>
+                            </div>
+                            <p class="view-note">On: CCs that are not mapped below go to Orbita with the same number, so a controller already set to Orbita's CC numbers works directly. Off: only mapped CCs are sent.</p>
+
+                            <div class="section-block" style="margin-top: var(--space-4)">
+                                <h2 class="section-heading">CC Mapping</h2>
+                                <p class="view-note">Press <b>Learn</b> and turn a knob to catch its CC number, then choose the Orbita parameter it controls.</p>
+                                <div id="routerMappings"></div>
+                                <button class="link-btn" id="routerAddMapping" type="button">+ Add mapping</button>
+                            </div>
+
+                            <div class="control-row">
+                                <div class="row-label">Last message</div>
+                                <div class="router-activity" id="routerActivity">—</div>
+                            </div>
+                        </section>
+
+                        <section class="view" id="view-help" hidden>
+                            <div class="view-header"><h1 class="view-title">Help · MIDI CC list</h1></div>
+                            <p class="view-note">Orbita listens on <b>USB MIDI, channel 1</b>. Messages on other channels and on the 5-pin MIDI port are ignored. Orbita sends its own output (notes, CC, clock) on USB and on the 5-pin MIDI out.</p>
+
+                            <div class="section-block">
+                                <h2 class="section-heading">Per track — send to Orbita</h2>
+                                <div class="table-wrap"><table class="cc-table" id="helpTrackTable"></table></div>
+                            </div>
+
+                            <div class="section-block">
+                                <h2 class="section-heading">Device — send to Orbita</h2>
+                                <div class="table-wrap"><table class="cc-table" id="helpGlobalTable"></table></div>
+                                <ul class="help-list">
+                                    <li><b>Note On / Off, channel 1</b> — while a note is held, every track plays it instead of its color mapping (Track 1 at pitch, Tracks 2–4 +1/+2/+3 octaves).</li>
+                                    <li>Settings changed by CC are lost on power off until you send <b>CC 99 = 127</b> (or press Save to Orbita).</li>
+                                </ul>
+                            </div>
+
+                            <div class="section-block">
+                                <h2 class="section-heading">What Orbita sends</h2>
+                                <div class="table-wrap"><table class="cc-table" id="helpOutTable"></table></div>
+                            </div>
+
+                            <div class="section-block">
+                                <h2 class="section-heading">On the device</h2>
+                                <ul class="help-list">
+                                    <li><b>Encoder button</b> — start / stop the motor.</li>
+                                    <li><b>Turn the encoder</b> — speed. Keep turning below minimum speed (3 steps) to reverse direction.</li>
+                                    <li><b>Hold the encoder button while powering on</b> — reset to factory settings.</li>
+                                    <li><b>Flash new firmware</b> — hold BOOTSEL, plug in USB, drop the .uf2 file on the RPI-RP2 drive.</li>
+                                </ul>
+                            </div>
+                        </section>
+
+                        <section class="view" id="view-extra" hidden>
+                            <div class="view-header"><h1 class="view-title">Extra</h1></div>
+
+                            <div class="section-block">
+                                <h2 class="section-heading">Clock Automatisation</h2>
+                                <div class="control-row">
+                                    <div class="row-label">Track Cycle (1 bar each)</div>
+                                    <button class="switch" id="clockAutomationToggle" role="switch" aria-checked="false"><span class="switch-dot"></span></button>
+                                </div>
+                                <div class="control-row">
+                                    <div class="row-label">Ticks per Bar</div>
+                                    <input type="number" class="number-input" id="ticksPerBarInput" min="1" max="999" value="96">
+                                    <div class="row-value" id="clockAutomationTickReadout">0 / 96</div>
+                                </div>
+                                <div class="control-row">
+                                    <div class="row-label">Last Full Rotation</div>
+                                    <div style="flex:1"></div>
+                                    <div class="row-value" id="clockAutomationBarTime">--</div>
+                                </div>
+                                <p class="view-note">Defaults to 96 (12 magnets × 8 clock pulses/magnet, per the firmware). If Track Cycle doesn't line up with a real rotation, watch the tick readout while the motor spins and adjust this until it hits the target right as the disc completes one turn.</p>
+                            </div>
+
+                            <div class="section-block">
+                                <h2 class="section-heading">CC to Notes</h2>
+                                <div class="control-row">
+                                    <div class="row-label">Note Output</div>
+                                    <select class="select" id="ccToNotesOutputSelect">
+                                        <option value="">-- Select MIDI Output --</option>
+                                    </select>
+                                </div>
+                                <div class="control-row">
+                                    <div class="row-label">Read Rate</div>
+                                    <select class="select" id="ccToNotesDivisionSelect">
+                                        <option value="1">1x per bar</option>
+                                        <option value="2">2x per bar</option>
+                                        <option value="4">4x per bar</option>
+                                        <option value="8">8x per bar</option>
+                                        <option value="16">16x per bar</option>
+                                        <option value="32">32x per bar</option>
+                                    </select>
+                                </div>
+                                <div class="control-row">
+                                    <div class="row-label">Chromatic C1–B7</div>
+                                    <button class="switch" id="ccToNotesToggle" role="switch" aria-checked="false"><span class="switch-dot"></span></button>
+                                </div>
+                            </div>
+                        </section>
+
+                    </div>
+                </div>
+                <div class="save-bar">
+                    <button class="btn-save" id="saveBtn">Save to Orbita</button>
+                </div>
+            </main>
+
+            <aside class="monitor-drawer" id="monitorDrawer">
+                <div class="drawer-inner">
+                    <div class="drawer-header">
+                        <div class="drawer-title">MIDI Monitor</div>
+                        <button class="icon-btn" id="closeMonitorBtn">×</button>
+                    </div>
+
+                    <div class="filter-section">
+                        <div>
+                            <div class="filter-title">Incoming</div>
+                            <div class="filter-options">
+                                <div class="filter-checkbox"><input type="checkbox" id="filterInNotes" checked><label for="filterInNotes">Notes</label></div>
+                                <div class="filter-checkbox"><input type="checkbox" id="filterInCC" checked><label for="filterInCC">CC</label></div>
+                                <div class="filter-checkbox"><input type="checkbox" id="filterInRealtime" checked><label for="filterInRealtime">Realtime</label></div>
+                                <div class="filter-checkbox"><input type="checkbox" id="filterInOther" checked><label for="filterInOther">Other</label></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="filter-title">Outgoing</div>
+                            <div class="filter-options">
+                                <div class="filter-checkbox"><input type="checkbox" id="filterOutNotes" checked><label for="filterOutNotes">Notes</label></div>
+                                <div class="filter-checkbox"><input type="checkbox" id="filterOutCC" checked><label for="filterOutCC">CC</label></div>
+                                <div class="filter-checkbox"><input type="checkbox" id="filterOutRealtime" checked><label for="filterOutRealtime">Realtime</label></div>
+                                <div class="filter-checkbox"><input type="checkbox" id="filterOutOther" checked><label for="filterOutOther">Other</label></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="drawer-messages" id="midiMonitor"></div>
+                    <button class="btn-secondary" id="clearMonitor">Clear Monitor</button>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <!-- Shared Scale / Root / Sync controls - one instance, physically moved
+         between the Device>Scale view and whichever track's Mapping section
+         is open, since they edit the same global mappingSettings state. -->
+    <div id="scaleRootSyncControls">
+        <div class="control-row">
+            <div class="row-label">Scale</div>
+            <select class="select" id="scaleSelect"></select>
+        </div>
+        <div class="control-row">
+            <div class="row-label">Root</div>
+            <select class="select" id="rootNoteSelect"></select>
+        </div>
+        <div class="control-row">
+            <div class="row-label">Sync</div>
+            <button class="switch" id="trackSyncToggle" role="switch" aria-checked="false"><span class="switch-dot"></span></button>
+        </div>
+    </div>
+
+    <script>
+        // ========================================
+        // GLOBAL STATE
+        // ========================================
+        let midiOutput = null;
+        let midiInput = null;
+        let midiAccess = null;
+        let scanInterval = null;
+        let isOrbitaConnected = false;
+        let ccToNotesOutput = null; // separate destination for CC-to-Notes - NOT the Orbita itself
+
+        // Message filters
+        const messageFilters = {
+            incoming: { notes: true, cc: true, realtime: true, other: true },
+            outgoing: { notes: true, cc: true, realtime: true, other: true }
+        };
+
+        // Track state storage
+        const trackState = {
+            0: { on: true, noteLength: 260, velocity: 87, channel: 1, mode: 0, probability: 127, veloRange: 0, cc: 102, brightnessCC: 106 },
+            1: { on: true, noteLength: 260, velocity: 87, channel: 1, mode: 0, probability: 127, veloRange: 0, cc: 103, brightnessCC: 107 },
+            2: { on: true, noteLength: 260, velocity: 87, channel: 1, mode: 0, probability: 127, veloRange: 0, cc: 104, brightnessCC: 108 },
+            3: { on: true, noteLength: 260, velocity: 87, channel: 1, mode: 0, probability: 127, veloRange: 0, cc: 105, brightnessCC: 109 }
+        };
+
+        // ========================================
+        // VIEW SWITCHING (one-screen principle)
+        // ========================================
+        let currentView = 'track0';
+        let lastNonExtraView = 'track0';
+
+        function mountScaleControls(containerId) {
+            const container = document.getElementById(containerId);
+            const controls = document.getElementById('scaleRootSyncControls');
+            if (container && controls && controls.parentElement !== container) {
+                container.appendChild(controls);
+            }
+        }
+
+        function showView(viewId) {
+            document.querySelectorAll('.view').forEach(v => v.hidden = true);
+            const target = document.getElementById(`view-${viewId}`);
+            if (target) target.hidden = false;
+            currentView = viewId;
+            if (viewId !== 'extra') lastNonExtraView = viewId;
+
+            document.querySelectorAll('.rail-item[data-view]').forEach(item => {
+                item.classList.toggle('active', item.dataset.view === viewId);
+            });
+            document.getElementById('overflowBtn').classList.toggle('active', viewId === 'extra');
+
+            if (viewId === 'scale') {
+                mountScaleControls('scaleControlsSlotDevice');
+            } else if (viewId.startsWith('track')) {
+                const track = viewId.replace('track', '');
+                const mappingSection = document.querySelector(`.accordion[data-track-accordion="${track}"] .accordion-section[data-section="mapping"]`);
+                if (mappingSection && mappingSection.classList.contains('open')) {
+                    mountScaleControls(`scaleControlsSlot${track}`);
+                }
+            }
+        }
+
+        function initAccordions() {
+            document.querySelectorAll('.accordion-header').forEach(header => {
+                header.addEventListener('click', () => {
+                    const section = header.closest('.accordion-section');
+                    const accordion = header.closest('.accordion');
+                    const wasOpen = section.classList.contains('open');
+
+                    accordion.querySelectorAll('.accordion-section').forEach(s => {
+                        s.classList.remove('open');
+                        s.querySelector('.accordion-icon').textContent = '+';
+                    });
+
+                    if (!wasOpen) {
+                        section.classList.add('open');
+                        header.querySelector('.accordion-icon').textContent = '−';
+                        if (section.dataset.section === 'mapping') {
+                            const track = accordion.dataset.trackAccordion;
+                            mountScaleControls(`scaleControlsSlot${track}`);
+                        }
+                    }
+                });
+            });
+        }
+
+        // ========================================
+        // COLOR -> NOTE MAPPING
+        // ========================================
+        const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+        // Colors in wheel order, RED (track 1) through PINK (track 4)
+        const COLORS = [
+            { key: 'red',       label: 'Red',        css: '#ff3b30' },
+            { key: 'orange',    label: 'Orange',     css: '#ff9500' },
+            { key: 'yellow',    label: 'Yellow',     css: '#ffcc00' },
+            { key: 'green',     label: 'Green',      css: '#34c759' },
+            { key: 'lightblue', label: 'Light Blue', css: '#5ac8fa' },
+            { key: 'darkblue',  label: 'Dark Blue',  css: '#0a3d91' },
+            { key: 'pink',      label: 'Pink',       css: '#ff2d78' }
+        ];
+
+        function midiNoteName(n) {
+            const octave = Math.floor(n / 12) - 1;
+            return `${NOTE_NAMES[n % 12]}${octave}`;
+        }
+
+        function clampNote(n) {
+            return Math.min(127, Math.max(0, n));
+        }
+
+        // Scale definitions: semitone intervals above the root, ascending
+        const SCALES = {
+            'Major':                  [0, 2, 4, 5, 7, 9, 11],
+            'Natural Minor':          [0, 2, 3, 5, 7, 8, 10],
+            'Dorian':                 [0, 2, 3, 5, 7, 9, 10],
+            'Mixolydian':             [0, 2, 4, 5, 7, 9, 10],
+            'Lydian':                 [0, 2, 4, 6, 7, 9, 11],
+            'Phrygian':               [0, 1, 3, 5, 7, 8, 10],
+            'Major Pentatonic':       [0, 2, 4, 7, 9],
+            'Minor Pentatonic':       [0, 3, 5, 7, 10],
+            'Blues':                  [0, 3, 5, 6, 7, 10],
+            'Hirajoshi':              [0, 2, 3, 7, 8],
+            'Insen':                  [0, 1, 5, 7, 10],
+            'Pelog':                  [0, 1, 3, 7, 8],
+            'Arabic (Double Harmonic)': [0, 1, 4, 5, 7, 8, 11],
+            'Whole Tone':             [0, 2, 4, 6, 8, 10],
+            'Octatonic':              [0, 2, 3, 5, 6, 8, 9, 11],
+            'Chromatic':              [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        };
+
+        const SCALE_GROUPS = [
+            { label: 'Diatonic Modes', scales: ['Major', 'Natural Minor', 'Dorian', 'Mixolydian', 'Lydian', 'Phrygian'] },
+            { label: 'Pentatonic & Blues', scales: ['Major Pentatonic', 'Minor Pentatonic', 'Blues'] },
+            { label: 'World Scales', scales: ['Hirajoshi', 'Insen', 'Pelog', 'Arabic (Double Harmonic)'] },
+            { label: 'Symmetric', scales: ['Whole Tone', 'Octatonic', 'Chromatic'] }
+        ];
+
+        // Global mapping settings: root note lands on Track 1 / Red.
+        // The scale's intervals then step forward, color by color, track by
+        // track, all the way to Track 4 / Pink (unless Track Sync is on).
+        const mappingSettings = {
+            scale: 'Major',
+            root: 36, // C2
+            sync: false
+        };
+
+        // Builds `count` ascending notes starting at rootMidi, walking the
+        // given interval pattern and wrapping up an octave each time it repeats.
+        function scaleSequence(rootMidi, intervals, count) {
+            const seq = [];
+            for (let i = 0; i < count; i++) {
+                const degreeIndex = i % intervals.length;
+                const octave = Math.floor(i / intervals.length);
+                seq.push(clampNote(rootMidi + intervals[degreeIndex] + octave * 12));
+            }
+            return seq;
+        }
+
+        // colorMapping[track][colorKey] = midi note number
+        const colorMapping = { 0: {}, 1: {}, 2: {}, 3: {} };
+
+        // Firmware CC scheme (ORBITA_DIY_DANDELION_FIRMWARE_v1_0.ino):
+        // CC 50-77 set midiNotes[track][colorIndex] directly, track = (cc-50)/7, colorIndex = (cc-50)%7
+        function colorMidiCC(track, colorIndex) {
+            return 50 + track * 7 + colorIndex;
+        }
+
+        function sendColorMappingForTrack(track) {
+            if (!midiOutput) return; // nothing connected yet - just update local/UI state
+            COLORS.forEach((c, idx) => {
+                sendCC(colorMidiCC(track, idx), colorMapping[track][c.key]);
+            });
+        }
+
+        // Recomputes every track's color mapping from the current
+        // scale / root / track-sync settings.
+        function recomputeAllMappings() {
+            const intervals = SCALES[mappingSettings.scale];
+            const root = mappingSettings.root;
+
+            if (mappingSettings.sync) {
+                // Track 1 gets the scale sequence; each following track
+                // repeats it one octave higher.
+                const seq = scaleSequence(root, intervals, COLORS.length);
+                for (let t = 0; t < 4; t++) {
+                    COLORS.forEach((c, idx) => {
+                        colorMapping[t][c.key] = clampNote(seq[idx] + t * 12);
+                    });
+                }
+            } else {
+                // One continuous scale run across all 4 tracks x 7 colors.
+                const seq = scaleSequence(root, intervals, 4 * COLORS.length);
+                let i = 0;
+                for (let t = 0; t < 4; t++) {
+                    COLORS.forEach(c => {
+                        colorMapping[t][c.key] = seq[i];
+                        i++;
+                    });
+                }
+            }
+
+            for (let t = 0; t < 4; t++) {
+                buildColorMappingUI(t);
+                sendColorMappingForTrack(t);
+            }
+            updateMappingSummaries();
+        }
+
+        // Recomputes just one track's mapping from current scale settings
+        // (used by each track's "Reset from Scale" button).
+        function resetTrackMapping(track) {
+            const intervals = SCALES[mappingSettings.scale];
+            const root = mappingSettings.root;
+
+            if (mappingSettings.sync) {
+                const seq = scaleSequence(root, intervals, COLORS.length);
+                COLORS.forEach((c, idx) => {
+                    colorMapping[track][c.key] = clampNote(seq[idx] + track * 12);
+                });
+            } else {
+                const seq = scaleSequence(root, intervals, 4 * COLORS.length);
+                COLORS.forEach((c, idx) => {
+                    colorMapping[track][c.key] = seq[track * COLORS.length + idx];
+                });
+            }
+
+            buildColorMappingUI(track);
+            sendColorMappingForTrack(track);
+            addLog(`🎨 Track ${track + 1} color mapping reset from scale (${mappingSettings.scale})`, 'system', 'system');
+        }
+
+        function buildScaleSelect() {
+            const select = document.getElementById('scaleSelect');
+            select.innerHTML = SCALE_GROUPS.map(group => `
+                <optgroup label="${group.label}">
+                    ${group.scales.map(name =>
+                        `<option value="${name}"${name === mappingSettings.scale ? ' selected' : ''}>${name}</option>`
+                    ).join('')}
+                </optgroup>
+            `).join('');
+        }
+
+        function buildRootNoteSelect() {
+            const select = document.getElementById('rootNoteSelect');
+            let html = '';
+            for (let n = 0; n <= 127; n++) {
+                html += `<option value="${n}"${n === mappingSettings.root ? ' selected' : ''}>${midiNoteName(n)}</option>`;
+            }
+            select.innerHTML = html;
+        }
+
+        function setTrackSyncButton() {
+            setSwitchEl(document.getElementById('trackSyncToggle'), mappingSettings.sync);
+        }
+
+        function updateMappingSummaries() {
+            const summary = `${mappingSettings.scale} · Root ${midiNoteName(mappingSettings.root)} · 7 colors`;
+            document.querySelectorAll('[data-summary="mapping"]').forEach(el => el.textContent = summary);
+        }
+
+        // ========================================
+        // SWITCH COMPONENT HELPER
+        // ========================================
+        function setSwitchEl(el, on) {
+            if (!el) return;
+            el.classList.toggle('on', on);
+            el.setAttribute('aria-checked', on ? 'true' : 'false');
+        }
+
+        // ========================================
+        // MIDI INITIALIZATION
+        // ========================================
+        async function initMIDI() {
+            try {
+                midiAccess = await navigator.requestMIDIAccess();
+
+                midiAccess.onstatechange = (e) => {
+                    console.log('MIDI device state changed:', e.port.name, e.port.state);
+                    scanForOrbita();
+                    populateCcToNotesOutputs();
+                    populateRouterInputs();
+                };
+
+                scanForOrbita();
+                scanInterval = setInterval(scanForOrbita, 3000);
+                populateCcToNotesOutputs();
+                populateRouterInputs();
+
+                addLog('✓ MIDI Access granted - Scanning for Orbita...', 'system', 'system');
+            } catch (error) {
+                addLog('⚠ MIDI Access denied: ' + error, 'error', 'system');
+                updateStatus(false, 'MIDI Access Denied');
+                setTimeout(initMIDI, 5000);
+            }
+        }
+
+        function scanForOrbita() {
+            if (!midiAccess) return;
+
+            let orbitaOutput = null;
+            let orbitaInput = null;
+
+            for (let output of midiAccess.outputs.values()) {
+                if (output.name && (
+                    output.name.toLowerCase().includes('orbita') ||
+                    output.name.toLowerCase().includes('playtronica')
+                )) {
+                    orbitaOutput = output;
+                    break;
+                }
+            }
+
+            for (let input of midiAccess.inputs.values()) {
+                if (input.name && (
+                    input.name.toLowerCase().includes('orbita') ||
+                    input.name.toLowerCase().includes('playtronica')
+                )) {
+                    orbitaInput = input;
+                    break;
+                }
+            }
+
+            if (orbitaOutput && orbitaInput) {
+                if (!isOrbitaConnected) {
+                    connectToOrbita(orbitaOutput, orbitaInput);
+                    isOrbitaConnected = true;
+                    addLog(`✓ Orbita connected: ${orbitaOutput.name}`, 'system', 'system');
+                }
+                updateStatus(true, `Connected: ${orbitaOutput.name}`);
+            } else {
+                if (isOrbitaConnected) {
+                    disconnectOrbita();
+                    isOrbitaConnected = false;
+                    addLog('✗ Orbita disconnected', 'error', 'system');
+                }
+                updateStatus(false, 'No Orbita Detected - Scanning...');
+            }
+        }
+
+        function connectToOrbita(output, input) {
+            if (midiInput) {
+                midiInput.onmidimessage = null;
+            }
+
+            midiOutput = output;
+            midiInput = input;
+            midiInput.onmidimessage = handleMIDIMessage;
+
+            // Start heartbeat - send CC 127 value 127 every 2 seconds
+            setInterval(() => {
+                if (midiOutput && isOrbitaConnected) {
+                    const message = [0xB0, 127, 127]; // CC 127 = 127 on channel 1
+                    midiOutput.send(message);
+                }
+            }, 2000);
+
+            // Push the current color/scale mapping to the device now that it's connected
+            for (let t = 0; t < 4; t++) sendColorMappingForTrack(t);
+        }
+
+        function disconnectOrbita() {
+            if (midiInput) {
+                midiInput.onmidimessage = null;
+            }
+            midiOutput = null;
+            midiInput = null;
+        }
+
+        function updateStatus(connected, message = '') {
+            const indicator = document.getElementById('statusIndicator');
+            const text = document.getElementById('statusText');
+
+            indicator.classList.remove('connected', 'scanning');
+
+            if (connected) {
+                indicator.classList.add('connected');
+                text.textContent = message || 'Orbita Connected';
+            } else {
+                indicator.classList.add('scanning');
+                text.textContent = message || 'No Orbita Detected';
+            }
+        }
+
+        // ========================================
+        // MIDI MESSAGE HANDLING
+        // ========================================
+        function handleMIDIMessage(message) {
+            const [status, data1, data2] = message.data;
+            const messageType = status & 0xF0;
+            const channel = (status & 0x0F) + 1;
+
+            let logMessage = '';
+            let className = '';
+            let category = '';
+
+            // Realtime messages
+            if (status >= 0xF8) {
+                category = 'realtime';
+                const realtimeNames = {
+                    0xF8: 'Clock', 0xFA: 'Start', 0xFB: 'Continue',
+                    0xFC: 'Stop', 0xFE: 'Active Sensing', 0xFF: 'Reset'
+                };
+                logMessage = `⏱ Realtime: ${realtimeNames[status] || 'Unknown'}`;
+                className = 'realtime';
+
+                if (status === 0xF8) {
+                    handleClockAutomationTick();
+                    handleCcToNotesClockTick();
+                }
+            }
+            // Note messages
+            else if (messageType === 0x90 && data2 > 0) {
+                category = 'notes';
+                logMessage = `▶ IN Note ON: ${data1} Vel: ${data2} Ch: ${channel}`;
+                className = 'note-on';
+            } else if (messageType === 0x80 || (messageType === 0x90 && data2 === 0)) {
+                category = 'notes';
+                logMessage = `■ IN Note OFF: ${data1} Ch: ${channel}`;
+                className = 'note-off';
+            }
+            // Control Change
+            else if (messageType === 0xB0) {
+                category = 'cc';
+                logMessage = `🎛 IN CC ${data1}: ${data2} Ch: ${channel}`;
+                className = 'cc';
+
+                // UPDATE UI FROM CC
+                handleCCMessage(data1, data2, channel);
+            }
+            // Other messages
+            else {
+                category = 'other';
+                logMessage = `📨 IN Other: Status ${status.toString(16)} Data: ${data1}, ${data2}`;
+                className = 'other';
+            }
+
+            if (logMessage && messageFilters.incoming[category]) {
+                addLog(logMessage, className, 'incoming');
+            }
+        }
+
+        // ========================================
+        // CC MESSAGE HANDLER - THIS IS THE KEY FUNCTION
+        // ========================================
+        function handleCCMessage(cc, value, channel) {
+            console.log(`>>> handleCCMessage: CC=${cc}, Value=${value}, Channel=${channel}`);
+
+            // MOTOR STATE (CC 36 on Channel 15) - Device feedback
+            if (cc === 36 && channel === 15) {
+                console.log(`>>> MOTOR CC RECEIVED! Value=${value}`);
+                const isOn = value > 64;
+                console.log(`>>> Setting motor to: ${isOn ? 'ON' : 'OFF'}`);
+                setMotorButton(isOn);
+                return;
+            }
+
+            // MOTOR DIRECTION (CC 82 on Channel 15) - Device feedback (encoder / looper)
+            if (cc === 82 && channel === 15) {
+                setMotorDirectionButtons(value >= 64);
+                return;
+            }
+
+            // Track ON/OFF from Device (CC 20-23 on Channel 15) - Device feedback
+            if (cc >= 20 && cc <= 23 && channel === 15) {
+                const track = cc - 20;
+                const isOn = value > 64;
+                console.log(`>>> TRACK ${track + 1} FEEDBACK: ${isOn ? 'ON' : 'OFF'}`);
+                trackState[track].on = isOn;
+                setTrackButton(track, isOn);
+                return;
+            }
+
+            // Track ON/OFF from UI (CC 20-23 on Channel 1) - We sent this
+            if (cc >= 20 && cc <= 23 && channel === 1) {
+                // Ignore - this is our own message echoed back
+                return;
+            }
+
+            // Note Length (CC 24-27)
+            if (cc >= 24 && cc <= 27) {
+                const track = cc - 24;
+                const noteLength = Math.round((value / 127) * (2000 - 10) + 10);
+                trackState[track].noteLength = noteLength;
+                setSlider(`noteLength${track}`, value, noteLength + ' ms');
+                updateAccordionSummary(track);
+                return;
+            }
+
+            // Velocity (CC 28-31)
+            if (cc >= 28 && cc <= 31) {
+                const track = cc - 28;
+                trackState[track].velocity = value;
+                setSlider(`velocity${track}`, value, value);
+                updateAccordionSummary(track);
+                return;
+            }
+
+            // MIDI Channel (CC 32-35)
+            if (cc >= 32 && cc <= 35) {
+                const track = cc - 32;
+                let ch = value === 0 ? 1 : (value === 16 ? 0 : value % 16);
+                trackState[track].channel = ch;
+                setSlider(`channel${track}`, value, ch);
+                updateAccordionSummary(track);
+                return;
+            }
+
+            // Motor Speed (CC 37)
+            if (cc === 37) {
+                setSlider('motorSpeed', value, value);
+                return;
+            }
+
+            // Track Mode (CC 38-41)
+            if (cc >= 38 && cc <= 41) {
+                const track = cc - 38;
+                const mode = value > 64 ? 1 : 0;
+                trackState[track].mode = mode;
+                setModeButtons(track, mode);
+                updateAccordionSummary(track);
+                return;
+            }
+
+            // Probability (CC 42-45)
+            if (cc >= 42 && cc <= 45) {
+                const track = cc - 42;
+                trackState[track].probability = value;
+                const pct = Math.round((value / 127) * 100);
+                setSlider(`probability${track}`, value, pct + '%');
+                updateAccordionSummary(track);
+                return;
+            }
+
+            // Velocity Range (CC 46-49)
+            if (cc >= 46 && cc <= 49) {
+                const track = cc - 46;
+                trackState[track].veloRange = value;
+                setSlider(`veloRange${track}`, value, value);
+                return;
+            }
+
+            // CC -> NOTES (device sends hue as CC = trackState[t].cc on trackState[t].channel)
+            handleCcToNotes(cc, value, channel);
+        }
+
+        // ========================================
+        // UI UPDATE FUNCTIONS
+        // ========================================
+        function setMotorButton(isOn) {
+            setSwitchEl(document.getElementById('motorToggle'), isOn);
+        }
+
+        function setMotorDirectionButtons(clockwise) {
+            document.getElementById('motorDirCW').className = clockwise ? 'seg-btn active' : 'seg-btn';
+            document.getElementById('motorDirCCW').className = clockwise ? 'seg-btn' : 'seg-btn active';
+        }
+
+        function setTrackButton(track, isOn) {
+            setSwitchEl(document.getElementById(`trackToggle${track}`), isOn);
+            const dot = document.getElementById(`railDot${track}`);
+            if (dot) dot.classList.toggle('on', isOn);
+        }
+
+        function setSlider(id, rawValue, displayValue) {
+            const slider = document.getElementById(id);
+            const display = document.getElementById(`${id}Value`);
+            if (slider) slider.value = rawValue;
+            if (display) display.textContent = displayValue;
+        }
+
+        function setModeButtons(track, mode) {
+            const noteBtn = document.getElementById(`modeNote${track}`);
+            const ccBtn = document.getElementById(`modeCC${track}`);
+            if (noteBtn && ccBtn) {
+                noteBtn.className = mode === 0 ? 'seg-btn active' : 'seg-btn';
+                ccBtn.className = mode === 1 ? 'seg-btn active' : 'seg-btn';
+            }
+            const ccNumberSlider = document.getElementById(`ccNumber${track}`);
+            if (ccNumberSlider) ccNumberSlider.disabled = mode !== 1;
+            const brightnessSlider = document.getElementById(`brightnessCC${track}`);
+            if (brightnessSlider) brightnessSlider.disabled = mode !== 1;
+        }
+
+        function updateAccordionSummary(track) {
+            const t = trackState[track];
+            const outputEl = document.querySelector(`#view-track${track} [data-summary="output"]`);
+            if (outputEl) outputEl.textContent = `${t.mode === 0 ? 'Note' : 'CC'} · MIDI Ch ${t.channel}`;
+
+            const perfEl = document.querySelector(`#view-track${track} [data-summary="performance"]`);
+            if (perfEl) {
+                const pct = Math.round((t.probability / 127) * 100);
+                perfEl.textContent = `Velocity ${t.velocity} · Length ${t.noteLength} ms · Probability ${pct}%`;
+            }
+        }
+
+        // ========================================
+        // SEND MIDI MESSAGES
+        // ========================================
+        function sendCC(cc, value) {
+            if (!midiOutput) {
+                addLog('⚠ No MIDI output connected!', 'error', 'system');
+                return;
+            }
+
+            const message = [0xB0, cc, value];
+            midiOutput.send(message);
+
+            if (messageFilters.outgoing.cc) {
+                addLog(`🎛 OUT CC ${cc}: ${value}`, 'sent', 'outgoing');
+            }
+        }
+
+        // Notes go to ccToNotesOutput, a separate MIDI destination picked in
+        // the CC to Notes panel - NOT midiOutput, which is the Orbita's own
+        // control input and has no way to relay messages back out to anything
+        // else you could monitor.
+        function sendNoteOnMIDI(note, velocity, channel) {
+            if (!ccToNotesOutput) {
+                addLog('⚠ CC to Notes: no MIDI output selected!', 'error', 'system');
+                return;
+            }
+            const status = 0x90 | ((channel - 1) & 0x0F);
+            ccToNotesOutput.send([status, note, velocity]);
+            if (messageFilters.outgoing.notes) {
+                addLog(`▶ OUT Note ON: ${note} Vel: ${velocity} Ch: ${channel}`, 'note-on', 'outgoing');
+            }
+        }
+
+        function sendNoteOffMIDI(note, channel) {
+            if (!ccToNotesOutput) return;
+            const status = 0x80 | ((channel - 1) & 0x0F);
+            ccToNotesOutput.send([status, note, 0]);
+            if (messageFilters.outgoing.notes) {
+                addLog(`■ OUT Note OFF: ${note} Ch: ${channel}`, 'note-off', 'outgoing');
+            }
+        }
+
+        function populateCcToNotesOutputs() {
+            const select = document.getElementById('ccToNotesOutputSelect');
+            if (!select || !midiAccess) return;
+
+            const previousValue = select.value;
+            select.innerHTML = '<option value="">-- Select MIDI Output --</option>';
+
+            for (const output of midiAccess.outputs.values()) {
+                const option = document.createElement('option');
+                option.value = output.id;
+                option.textContent = output.name;
+                select.appendChild(option);
+            }
+
+            // Restore previous selection if that port still exists
+            if (previousValue && [...select.options].some(o => o.value === previousValue)) {
+                select.value = previousValue;
+            } else if (ccToNotesOutput) {
+                // Selected port disappeared (unplugged) - clear it
+                ccToNotesOutput = null;
+            }
+        }
+
+        // ========================================
+        // MONITOR FUNCTIONS
+        // ========================================
+        function addLog(message, type = '', direction = 'system') {
+            const monitor = document.getElementById('midiMonitor');
+            const entry = document.createElement('div');
+            entry.className = `midi-message ${type}`;
+            entry.dataset.direction = direction;
+            entry.dataset.type = type;
+
+            const timestamp = new Date().toLocaleTimeString('en-US', {
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                fractionalSecondDigits: 3
+            });
+
+            entry.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${message}`;
+            monitor.appendChild(entry);
+            monitor.scrollTop = monitor.scrollHeight;
+        }
+
+        function updateFilters() {
+            messageFilters.incoming.notes = document.getElementById('filterInNotes').checked;
+            messageFilters.incoming.cc = document.getElementById('filterInCC').checked;
+            messageFilters.incoming.realtime = document.getElementById('filterInRealtime').checked;
+            messageFilters.incoming.other = document.getElementById('filterInOther').checked;
+
+            messageFilters.outgoing.notes = document.getElementById('filterOutNotes').checked;
+            messageFilters.outgoing.cc = document.getElementById('filterOutCC').checked;
+            messageFilters.outgoing.realtime = document.getElementById('filterOutRealtime').checked;
+            messageFilters.outgoing.other = document.getElementById('filterOutOther').checked;
+        }
+
+        // ========================================
+        // TRACK VIEWS
+        // ========================================
+        function createTrackControls() {
+            const container = document.getElementById('tracksContainer');
+            const ccDefaults = [102, 103, 104, 105];
+
+            for (let i = 0; i < 4; i++) {
+                const section = document.createElement('section');
+                section.className = 'view';
+                section.id = `view-track${i}`;
+                section.hidden = true;
+
+                section.innerHTML = `
+                    <div class="view-header">
+                        <h1 class="view-title">Track ${i + 1}</h1>
+                        <div class="switch-row">
+                            <span class="row-label">Enabled</span>
+                            <button class="switch on" id="trackToggle${i}" role="switch" aria-checked="true"><span class="switch-dot"></span></button>
+                        </div>
+                    </div>
+
+                    <div class="accordion" data-track-accordion="${i}">
+                        <div class="accordion-section" data-section="output">
+                            <button class="accordion-header" type="button">
+                                <span class="accordion-icon">+</span>
+                                <span class="accordion-title">Output</span>
+                                <span class="accordion-summary" data-summary="output">Note · MIDI Ch 1</span>
+                            </button>
+                            <div class="accordion-body">
+                                <div class="control-row">
+                                    <div class="row-label">Mode</div>
+                                    <div class="segmented">
+                                        <button class="seg-btn active" id="modeNote${i}" type="button">Note</button>
+                                        <button class="seg-btn" id="modeCC${i}" type="button">CC</button>
+                                    </div>
+                                </div>
+                                <div class="control-row">
+                                    <div class="row-label">MIDI Channel</div>
+                                    <input type="range" class="slider" id="channel${i}" min="0" max="16" value="1">
+                                    <div class="row-value" id="channel${i}Value">1</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="accordion-section" data-section="performance">
+                            <button class="accordion-header" type="button">
+                                <span class="accordion-icon">+</span>
+                                <span class="accordion-title">Performance</span>
+                                <span class="accordion-summary" data-summary="performance">Velocity 87 · Length 260 ms · Probability 100%</span>
+                            </button>
+                            <div class="accordion-body">
+                                <div class="control-row">
+                                    <div class="row-label">Velocity</div>
+                                    <input type="range" class="slider" id="velocity${i}" min="0" max="127" value="87">
+                                    <div class="row-value" id="velocity${i}Value">87</div>
+                                </div>
+                                <div class="control-row">
+                                    <div class="row-label">Note length</div>
+                                    <input type="range" class="slider" id="noteLength${i}" min="0" max="127" value="64">
+                                    <div class="row-value" id="noteLength${i}Value">260 ms</div>
+                                </div>
+                                <div class="control-row">
+                                    <div class="row-label">Probability</div>
+                                    <input type="range" class="slider" id="probability${i}" min="0" max="127" value="127">
+                                    <div class="row-value" id="probability${i}Value">100%</div>
+                                </div>
+                                <div class="control-row">
+                                    <div class="row-label">Velocity range</div>
+                                    <input type="range" class="slider" id="veloRange${i}" min="0" max="127" value="0">
+                                    <div class="row-value" id="veloRange${i}Value">0</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="accordion-section open" data-section="mapping">
+                            <button class="accordion-header" type="button">
+                                <span class="accordion-icon">−</span>
+                                <span class="accordion-title">Mapping</span>
+                                <span class="accordion-summary" data-summary="mapping">Major · Root C2 · 7 colors</span>
+                            </button>
+                            <div class="accordion-body">
+                                <div class="scale-controls-slot" id="scaleControlsSlot${i}"></div>
+                                <div class="mapping-list" id="colorMappingGrid${i}"></div>
+                                <button class="link-btn" id="resetMapping${i}" type="button">Reset from scale</button>
+                            </div>
+                        </div>
+
+                        <div class="accordion-section" data-section="advanced">
+                            <button class="accordion-header" type="button">
+                                <span class="accordion-icon">+</span>
+                                <span class="accordion-title">Advanced</span>
+                                <span class="accordion-summary">CC routing (Hue + Brightness) · Debug values</span>
+                            </button>
+                            <div class="accordion-body">
+                                <div class="control-row">
+                                    <div class="row-label">Hue CC Number</div>
+                                    <input type="range" class="slider" id="ccNumber${i}" min="0" max="127" value="${ccDefaults[i]}" ${trackState[i].mode === 1 ? '' : 'disabled'}>
+                                    <div class="row-value" id="ccNumber${i}Value">${ccDefaults[i]}</div>
+                                </div>
+                                <div class="control-row">
+                                    <div class="row-label">Brightness CC Number</div>
+                                    <input type="range" class="slider" id="brightnessCC${i}" min="0" max="127" value="${trackState[i].brightnessCC}" ${trackState[i].mode === 1 ? '' : 'disabled'}>
+                                    <div class="row-value" id="brightnessCC${i}Value">${trackState[i].brightnessCC}</div>
+                                </div>
+                                <div class="debug-block">
+                                    <div class="debug-row"><span>Track On/Off</span><span>CC ${20 + i}</span></div>
+                                    <div class="debug-row"><span>Note Length</span><span>CC ${24 + i}</span></div>
+                                    <div class="debug-row"><span>Velocity</span><span>CC ${28 + i}</span></div>
+                                    <div class="debug-row"><span>MIDI Channel</span><span>CC ${32 + i}</span></div>
+                                    <div class="debug-row"><span>Mode</span><span>CC ${38 + i}</span></div>
+                                    <div class="debug-row"><span>Probability</span><span>CC ${42 + i}</span></div>
+                                    <div class="debug-row"><span>Velocity Range</span><span>CC ${46 + i}</span></div>
+                                    <div class="debug-row"><span>Color Mapping</span><span>CC ${50 + i * 7}–${50 + i * 7 + 6}</span></div>
+                                    <div class="debug-row"><span>Hue CC Number (set)</span><span>CC ${78 + i}</span></div>
+                                    <div class="debug-row"><span>Brightness CC Number (set)</span><span>CC ${83 + i}</span></div>
+                                    <div class="debug-row"><span>Motor Direction</span><span>CC 82</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                container.appendChild(section);
+            }
+
+            // Attach event listeners after creating elements
+            for (let i = 0; i < 4; i++) {
+                document.getElementById(`trackToggle${i}`).addEventListener('click', () => toggleTrack(i));
+                document.getElementById(`modeNote${i}`).addEventListener('click', () => setMode(i, 0));
+                document.getElementById(`modeCC${i}`).addEventListener('click', () => setMode(i, 1));
+                document.getElementById(`ccNumber${i}`).addEventListener('input', (e) => updateCCNumber(i, e.target.value));
+                document.getElementById(`brightnessCC${i}`).addEventListener('input', (e) => updateBrightnessCC(i, e.target.value));
+                document.getElementById(`noteLength${i}`).addEventListener('input', (e) => updateNoteLength(i, e.target.value));
+                document.getElementById(`velocity${i}`).addEventListener('input', (e) => updateVelocity(i, e.target.value));
+                document.getElementById(`channel${i}`).addEventListener('input', (e) => updateChannel(i, e.target.value));
+                document.getElementById(`probability${i}`).addEventListener('input', (e) => updateProbability(i, e.target.value));
+                document.getElementById(`veloRange${i}`).addEventListener('input', (e) => updateVeloRange(i, e.target.value));
+                document.getElementById(`resetMapping${i}`).addEventListener('click', () => resetTrackMapping(i));
+            }
+        }
+
+        // ========================================
+        // COLOR MAPPING UI
+        // ========================================
+        function noteOptionsHTML(selectedNote) {
+            let html = '';
+            for (let n = 0; n <= 127; n++) {
+                html += `<option value="${n}"${n === selectedNote ? ' selected' : ''}>${midiNoteName(n)}</option>`;
+            }
+            return html;
+        }
+
+        function buildColorMappingUI(track) {
+            const grid = document.getElementById(`colorMappingGrid${track}`);
+            if (!grid) return;
+            grid.innerHTML = COLORS.map(c => {
+                const note = colorMapping[track][c.key];
+                return `
+                    <div class="mapping-row">
+                        <span class="mapping-dot" style="background:${c.css}"></span>
+                        <span class="mapping-label">${c.label}</span>
+                        <select class="mapping-value" id="colorNote_${track}_${c.key}">
+                            ${noteOptionsHTML(note)}
+                        </select>
+                    </div>
+                `;
+            }).join('');
+
+            COLORS.forEach(c => {
+                document.getElementById(`colorNote_${track}_${c.key}`)
+                    .addEventListener('change', (e) => updateColorMapping(track, c.key, parseInt(e.target.value)));
+            });
+        }
+
+        function updateColorMapping(track, colorKey, note) {
+            colorMapping[track][colorKey] = note;
+            const colorIndex = COLORS.findIndex(c => c.key === colorKey);
+            sendCC(colorMidiCC(track, colorIndex), note);
+            const label = COLORS.find(c => c.key === colorKey).label;
+            addLog(`🎨 Track ${track + 1} — ${label} mapped to ${midiNoteName(note)}`, 'system', 'system');
+        }
+
+        function toggleTrack(track) {
+            trackState[track].on = !trackState[track].on;
+            const cc = 20 + track;
+            sendCC(cc, trackState[track].on ? 127 : 0);
+            setTrackButton(track, trackState[track].on);
+        }
+
+        function setTrackOnOff(track, on) {
+            trackState[track].on = on;
+            sendCC(20 + track, on ? 127 : 0);
+            setTrackButton(track, on);
+        }
+
+        // ========================================
+        // CLOCK AUTOMATISATION (Extra menu)
+        // ========================================
+        // The Orbita generates its own MIDI clock from its physical rotation.
+        // Per Sync.ino's own comments, one full circle = 12 magnets x 8 clock
+        // pulses/magnet = 96 ticks, treated as one bar in 4/4 time - so by
+        // default we count 96 incoming 0xF8 ticks per bar, no timers needed.
+        // This is a firmware-comment assumption, not something verified
+        // against real hardware, so it's tunable here (with a live tick
+        // readout + measured rotation time) in case the real device disagrees.
+        let ticksPerBar = 96;
+        let lastBarTime = null; // performance.now() timestamp of the last bar boundary
+
+        const clockAutomation = {
+            enabled: false,
+            tickCount: 0,
+            currentTrack: 0
+        };
+
+        function updateClockAutomationReadout() {
+            const el = document.getElementById('clockAutomationTickReadout');
+            if (el) el.textContent = `${clockAutomation.tickCount} / ${ticksPerBar}`;
+        }
+
+        function handleClockAutomationTick() {
+            if (!clockAutomation.enabled) return;
+
+            clockAutomation.tickCount++;
+            updateClockAutomationReadout();
+
+            if (clockAutomation.tickCount >= ticksPerBar) {
+                clockAutomation.tickCount = 0;
+
+                const now = performance.now();
+                if (lastBarTime !== null) {
+                    const el = document.getElementById('clockAutomationBarTime');
+                    if (el) el.textContent = ((now - lastBarTime) / 1000).toFixed(2) + ' s';
+                }
+                lastBarTime = now;
+
+                setTrackOnOff(clockAutomation.currentTrack, false);
+                clockAutomation.currentTrack = (clockAutomation.currentTrack + 1) % 4;
+                setTrackOnOff(clockAutomation.currentTrack, true);
+                updateClockAutomationReadout();
+                addLog(`🔁 Clock Automatisation: Track ${clockAutomation.currentTrack + 1}`, 'system', 'system');
+            }
+        }
+
+        function toggleClockAutomation() {
+            clockAutomation.enabled = !clockAutomation.enabled;
+            setSwitchEl(document.getElementById('clockAutomationToggle'), clockAutomation.enabled);
+
+            if (clockAutomation.enabled) {
+                clockAutomation.tickCount = 0;
+                clockAutomation.currentTrack = 0;
+                lastBarTime = null;
+                document.getElementById('clockAutomationBarTime').textContent = '--';
+                updateClockAutomationReadout();
+                for (let t = 0; t < 4; t++) setTrackOnOff(t, t === 0);
+                addLog('🔁 Clock Automatisation: ON (Track 1)', 'system', 'system');
+            } else {
+                for (let t = 0; t < 4; t++) setTrackOnOff(t, true);
+                addLog('🔁 Clock Automatisation: OFF (all tracks on)', 'system', 'system');
+            }
+        }
+
+        // ========================================
+        // CC -> NOTES (Extra menu)
+        // ========================================
+        // Converts the color-sensor CC each track sends while in CC mode
+        // into a Note On, mapped chromatically CC 0 -> C1 (24) .. CC 127 -> B7 (107).
+        // Note is held for that track's configured Note Length, same as Note mode.
+        //
+        // Read Rate: rather than converting every incoming CC (which arrives
+        // continuously from the sensor), we cache the latest value and only
+        // trigger a note at clock-derived sample points (1/2/4/8/16/32 times
+        // per bar, 1 bar = 96 clock ticks - same tick-counting approach as
+        // Clock Automatisation, so no timers/drift). This is done entirely in
+        // software: the device keeps streaming normally and its track on/off
+        // state is left alone, so it doesn't fight with Clock Automatisation
+        // or interrupt the sensor readout.
+        const CC_TO_NOTES_LOW_NOTE = 24;  // C1
+        const CC_TO_NOTES_HIGH_NOTE = 107; // B7
+        let ccToNotesEnabled = false;
+        let ccToNotesDivision = 1; // samples per bar
+        let ccToNotesTickCount = 0;
+
+        // ccToNotesState[i] = { lastNote: null, timeoutId: null }
+        const ccToNotesState = [0, 1, 2, 3].map(() => ({ lastNote: null, timeoutId: null }));
+        // ccToNotesLatest[i] = latest CC value/channel received since the last sample
+        const ccToNotesLatest = [0, 1, 2, 3].map(() => ({ value: null, channel: null }));
+
+        function ccValueToChromaticNote(value) {
+            return Math.round(CC_TO_NOTES_LOW_NOTE + (value / 127) * (CC_TO_NOTES_HIGH_NOTE - CC_TO_NOTES_LOW_NOTE));
+        }
+
+        function trackFeedbackChannel(track) {
+            return (trackState[track].channel > 0 && trackState[track].channel < 16) ? trackState[track].channel : 16;
+        }
+
+        function stopCcToNotesVoice(track) {
+            const state = ccToNotesState[track];
+            if (state.timeoutId) {
+                clearTimeout(state.timeoutId);
+                state.timeoutId = null;
+            }
+            if (state.lastNote !== null) {
+                sendNoteOffMIDI(state.lastNote, trackFeedbackChannel(track));
+                state.lastNote = null;
+            }
+        }
+
+        // Called on every incoming CC - just caches the latest reading, does not trigger a note
+        function handleCcToNotes(cc, value, channel) {
+            if (!ccToNotesEnabled) return;
+
+            for (let t = 0; t < 4; t++) {
+                if (trackState[t].cc !== cc || trackFeedbackChannel(t) !== channel) continue;
+                ccToNotesLatest[t].value = value;
+                ccToNotesLatest[t].channel = channel;
+                return;
+            }
+        }
+
+        // Called on every incoming MIDI clock tick - fires a note at each sample point
+        function handleCcToNotesClockTick() {
+            if (!ccToNotesEnabled) return;
+
+            const ticksPerSample = ticksPerBar / ccToNotesDivision;
+            ccToNotesTickCount++;
+            if (ccToNotesTickCount < ticksPerSample) return;
+            ccToNotesTickCount = 0;
+
+            for (let t = 0; t < 4; t++) {
+                const latest = ccToNotesLatest[t];
+                if (latest.value === null) continue;
+
+                const note = ccValueToChromaticNote(latest.value);
+                const state = ccToNotesState[t];
+
+                if (state.timeoutId) clearTimeout(state.timeoutId);
+                if (state.lastNote !== null) sendNoteOffMIDI(state.lastNote, latest.channel);
+
+                sendNoteOnMIDI(note, trackState[t].velocity, latest.channel);
+                state.lastNote = note;
+                const channel = latest.channel;
+                state.timeoutId = setTimeout(() => {
+                    sendNoteOffMIDI(note, channel);
+                    state.lastNote = null;
+                    state.timeoutId = null;
+                }, trackState[t].noteLength);
+            }
+        }
+
+        function toggleCcToNotes() {
+            ccToNotesEnabled = !ccToNotesEnabled;
+            setSwitchEl(document.getElementById('ccToNotesToggle'), ccToNotesEnabled);
+
+            if (ccToNotesEnabled) {
+                ccToNotesTickCount = 0;
+                ccToNotesLatest.forEach(l => { l.value = null; l.channel = null; });
+                addLog(`🎹 CC to Notes: ON (${ccToNotesDivision}x per bar)`, 'system', 'system');
+            } else {
+                for (let t = 0; t < 4; t++) stopCcToNotesVoice(t);
+                addLog('🎹 CC to Notes: OFF', 'system', 'system');
+            }
+        }
+
+        function setMode(track, mode) {
+            trackState[track].mode = mode;
+            const cc = 38 + track;
+            sendCC(cc, mode > 0 ? 127 : 0);
+            setModeButtons(track, mode);
+            updateAccordionSummary(track);
+        }
+
+        function updateCCNumber(track, value) {
+            trackState[track].cc = parseInt(value);
+            document.getElementById(`ccNumber${track}Value`).textContent = value;
+            const cc = 78 + track;
+            sendCC(cc, parseInt(value));
+        }
+
+        // Brightness CC number: CC 83-86 = Track 1-4 (same order as Hue CC 78-81)
+        function updateBrightnessCC(track, value) {
+            trackState[track].brightnessCC = parseInt(value);
+            document.getElementById(`brightnessCC${track}Value`).textContent = value;
+            sendCC(83 + track, parseInt(value));
+        }
+
+        function updateNoteLength(track, value) {
+            const noteLength = Math.round((value / 127) * (2000 - 10) + 10);
+            trackState[track].noteLength = noteLength;
+            document.getElementById(`noteLength${track}Value`).textContent = noteLength + ' ms';
+            const cc = 24 + track;
+            sendCC(cc, parseInt(value));
+            updateAccordionSummary(track);
+        }
+
+        function updateVelocity(track, value) {
+            trackState[track].velocity = parseInt(value);
+            document.getElementById(`velocity${track}Value`).textContent = value;
+            const cc = 28 + track;
+            sendCC(cc, parseInt(value));
+            updateAccordionSummary(track);
+        }
+
+        function updateChannel(track, value) {
+            trackState[track].channel = parseInt(value);
+            document.getElementById(`channel${track}Value`).textContent = value;
+            const cc = 32 + track;
+            sendCC(cc, parseInt(value));
+            updateAccordionSummary(track);
+        }
+
+        function updateProbability(track, value) {
+            trackState[track].probability = parseInt(value);
+            const pct = Math.round((value / 127) * 100);
+            document.getElementById(`probability${track}Value`).textContent = pct + '%';
+            const cc = 42 + track;
+            sendCC(cc, parseInt(value));
+            updateAccordionSummary(track);
+        }
+
+        function updateVeloRange(track, value) {
+            trackState[track].veloRange = parseInt(value);
+            document.getElementById(`veloRange${track}Value`).textContent = value;
+            const cc = 46 + track;
+            sendCC(cc, parseInt(value));
+        }
+
+        // ========================================
+        // MOTOR CONTROLS
+        // ========================================
+        document.getElementById('motorToggle').addEventListener('click', function() {
+            const turningOn = !this.classList.contains('on');
+            sendCC(36, turningOn ? 127 : 0);
+            setMotorButton(turningOn);
+        });
+
+        document.getElementById('motorSpeed').addEventListener('input', function() {
+            document.getElementById('motorSpeedValue').textContent = this.value;
+            sendCC(37, parseInt(this.value));
+        });
+
+        // Motor direction: CC 82, 127 = clockwise, 0 = counter-clockwise
+        document.getElementById('motorDirCW').addEventListener('click', function() {
+            sendCC(82, 127);
+            setMotorDirectionButtons(true);
+        });
+        document.getElementById('motorDirCCW').addEventListener('click', function() {
+            sendCC(82, 0);
+            setMotorDirectionButtons(false);
+        });
+
+        // ========================================
+        // ORBITA CC REFERENCE (single source for Help + Router)
+        // Track n (1-4) uses CC base + (n - 1).
+        // ========================================
+        const COLOR_ORDER = 'Red, Orange, Yellow, Green, Light Blue, Dark Blue, Pink';
+        const ORBITA_TRACK_PARAMS = [
+            { base: 20, name: 'Track on / off',       values: '65–127 on · 0–64 off' },
+            { base: 24, name: 'Note length',          values: '0–127 → 10–2000 ms' },
+            { base: 28, name: 'Velocity',             values: '0–127' },
+            { base: 32, name: 'MIDI out channel',     values: '1–15 = channel · 0 = 1 · 16 = 16' },
+            { base: 38, name: 'Mode Note / CC',       values: '0–64 Note · 65–127 CC' },
+            { base: 42, name: 'Probability',          values: '0 never … 127 always' },
+            { base: 46, name: 'Velocity range',       values: 'random ± added to velocity' },
+            { base: 78, name: 'Hue CC number',        values: 'CC number Orbita sends hue on (default 102–105)' },
+            { base: 83, name: 'Brightness CC number', values: 'CC number Orbita sends brightness on (default 106–109)' }
+        ];
+        const ORBITA_GLOBAL_PARAMS = [
+            { cc: 36,  name: 'Motor start / stop',  values: '65–127 start · 0–64 stop', map: true },
+            { cc: 37,  name: 'Motor speed',         values: '0 slowest … 127 fastest. Ignored while the motor is stopped — start it first.', map: true },
+            { cc: 82,  name: 'Motor direction',     values: '64–127 clockwise · 0–63 counter-clockwise', map: true },
+            { cc: 101, name: 'No-magnet mode',      values: '0–80 color → CC · 81–127 black/white → notes', map: true },
+            { cc: 100, name: 'Reset color notes',   values: '66 = C major · 67 = chromatic' },
+            { cc: 99,  name: 'Save / test',         values: '127 = save settings to memory · 99 = hardware test on · 100 = off' },
+            { cc: 127, name: 'Heartbeat',           values: '127, sent by this page every 2 s. Enables the channel 15 feedback.' }
+        ];
+
+        function buildHelpPage() {
+            const trackHead = '<tr><th>Parameter</th><th>T1</th><th>T2</th><th>T3</th><th>T4</th><th>Values</th></tr>';
+            let rows = ORBITA_TRACK_PARAMS.map(p =>
+                `<tr><td>${p.name}</td>${[0,1,2,3].map(t => `<td class="num">${p.base + t}</td>`).join('')}<td class="desc">${p.values}</td></tr>`
+            );
+            rows.splice(7, 0, `<tr><td>Color notes</td>${[0,1,2,3].map(t => `<td class="num">${50 + t*7}–${56 + t*7}</td>`).join('')}<td class="desc">value = MIDI note, in order ${COLOR_ORDER}</td></tr>`);
+            document.getElementById('helpTrackTable').innerHTML = trackHead + rows.join('');
+
+            document.getElementById('helpGlobalTable').innerHTML =
+                '<tr><th>CC</th><th>Parameter</th><th>Values</th></tr>' +
+                ORBITA_GLOBAL_PARAMS.map(p => `<tr><td class="num">${p.cc}</td><td>${p.name}</td><td class="desc">${p.values}</td></tr>`).join('');
+
+            const out = [
+                ['Notes', 'Track channel', 'Note mode: one note per magnet, pitch from the color mapping, velocity / length / probability per track.'],
+                ['Hue CC 102–105', 'Track channel', 'CC mode: color hue, 0–127, only when it changes. Track 1–4.'],
+                ['Brightness CC 106–109', 'Track channel', 'CC mode: brightness, 0–127, only when it changes. Track 1–4.'],
+                ['Notes (black/white)', 'Track channel', 'No-magnet B/W mode: first color note on when dark, off when light.'],
+                ['Clock, Start, Stop', '—', 'Clock follows the disc: 96 ticks per rotation (12 magnets × 8). Start / Stop with the motor.'],
+                ['CC 36 = 100 / 0', '15', 'Motor started / stopped (feedback to this page).'],
+                ['CC 20–23 = 100 / 0', '15', 'Track 1–4 on / off from the buttons (feedback).'],
+                ['CC 82 = 127 / 0', '15', 'Direction changed by encoder or looper (feedback).']
+            ];
+            document.getElementById('helpOutTable').innerHTML =
+                '<tr><th>Message</th><th>Channel</th><th>When</th></tr>' +
+                out.map(r => `<tr><td class="num">${r[0]}</td><td class="num">${r[1]}</td><td class="desc">${r[2]}</td></tr>`).join('') +
+                '<tr><td colspan="3" class="desc">Feedback on channel 15 is only sent while this page is open (heartbeat CC 127).</td></tr>';
+        }
+
+        // Keeps the UI in step with CCs sent to Orbita from outside the UI (router)
+        function syncUIFromSentCC(cc, value) {
+            if (cc === 36) { setMotorButton(value > 64); return; }
+            if (cc === 82) { setMotorDirectionButtons(value >= 64); return; }
+            if (cc >= 20 && cc <= 23) {
+                const t = cc - 20;
+                trackState[t].on = value > 64;
+                setTrackButton(t, trackState[t].on);
+                return;
+            }
+            if (cc >= 83 && cc <= 86) {
+                const t = cc - 83;
+                trackState[t].brightnessCC = value;
+                setSlider(`brightnessCC${t}`, value, value);
+                return;
+            }
+            if (cc >= 78 && cc <= 81) {
+                const t = cc - 78;
+                trackState[t].cc = value;
+                setSlider(`ccNumber${t}`, value, value);
+                return;
+            }
+            if ((cc >= 24 && cc <= 35) || (cc >= 37 && cc <= 49)) handleCCMessage(cc, value, 1);
+        }
+
+        // ========================================
+        // MIDI ROUTER: any MIDI input -> Orbita (channel 1)
+        // ========================================
+        const ROUTER_STORAGE_KEY = 'orbitaRouter';
+        const router = {
+            enabled: false,
+            inputName: '',
+            channel: 0,          // 0 = all channels
+            notes: true,
+            passCC: true,
+            mappings: []         // { in: <cc number or null>, out: <orbita cc> }
+        };
+        let routerInput = null;
+        let routerLearnIndex = -1;
+
+        function loadRouterSettings() {
+            try {
+                const saved = JSON.parse(localStorage.getItem(ROUTER_STORAGE_KEY) || 'null');
+                if (saved) Object.assign(router, saved, { enabled: false });
+            } catch (e) { /* storage unavailable */ }
+        }
+        function saveRouterSettings() {
+            try {
+                const { enabled, ...rest } = router;
+                localStorage.setItem(ROUTER_STORAGE_KEY, JSON.stringify(rest));
+            } catch (e) { /* storage unavailable */ }
+        }
+
+        function routerTargetOptions(selected) {
+            const opts = [];
+            ORBITA_GLOBAL_PARAMS.filter(p => p.map).forEach(p => opts.push([p.cc, `${p.name} (CC ${p.cc})`]));
+            ORBITA_TRACK_PARAMS.filter(p => p.base < 78).forEach(p => {
+                for (let t = 0; t < 4; t++) opts.push([p.base + t, `T${t + 1} ${p.name} (CC ${p.base + t})`]);
+            });
+            return opts.map(([cc, label]) => `<option value="${cc}"${cc === selected ? ' selected' : ''}>${label}</option>`).join('');
+        }
+
+        function isOrbitaPort(port) {
+            const n = (port.name || '').toLowerCase();
+            return n.includes('orbita') || n.includes('playtronica');
+        }
+
+        function populateRouterInputs() {
+            const select = document.getElementById('routerInputSelect');
+            if (!select || !midiAccess) return;
+            select.innerHTML = '<option value="">-- Select MIDI Input --</option>';
+            for (const input of midiAccess.inputs.values()) {
+                if (isOrbitaPort(input)) continue;   // never route Orbita back into itself
+                const o = document.createElement('option');
+                o.value = input.name;
+                o.textContent = input.name;
+                select.appendChild(o);
+            }
+            if (router.inputName && [...select.options].some(o => o.value === router.inputName)) {
+                select.value = router.inputName;
+            }
+            attachRouterInput();
+        }
+
+        function attachRouterInput() {
+            let next = null;
+            if (midiAccess && router.inputName) {
+                for (const input of midiAccess.inputs.values()) {
+                    if (input.name === router.inputName && !isOrbitaPort(input)) { next = input; break; }
+                }
+            }
+            if (next === routerInput) return;
+            if (routerInput) routerInput.removeEventListener('midimessage', handleRouterMessage);
+            routerInput = next;
+            if (routerInput) routerInput.addEventListener('midimessage', handleRouterMessage);
+        }
+
+        function setRouterActivity(text) {
+            const el = document.getElementById('routerActivity');
+            if (el) el.textContent = text;
+        }
+
+        function handleRouterMessage(e) {
+            const [status, d1, d2] = e.data;
+            if (status >= 0xF0) return;                 // ignore clock / sysex from the controller
+            const type = status & 0xF0;
+            const ch = (status & 0x0F) + 1;
+
+            // MIDI learn works even while the router is off
+            if (type === 0xB0 && routerLearnIndex >= 0) {
+                router.mappings[routerLearnIndex].in = d1;
+                routerLearnIndex = -1;
+                saveRouterSettings();
+                buildRouterMappings();
+                setRouterActivity(`Learned CC ${d1}`);
+                return;
+            }
+
+            if (!router.enabled || !midiOutput) return;
+            if (router.channel !== 0 && ch !== router.channel) return;
+
+            if ((type === 0x90 || type === 0x80) && router.notes) {
+                midiOutput.send([type, d1, d2]);       // channel 1
+                const on = type === 0x90 && d2 > 0;
+                setRouterActivity(`Note ${on ? 'On' : 'Off'} ${midiNoteName(d1)} → Orbita`);
+                return;
+            }
+
+            if (type === 0xB0) {
+                const mapped = router.mappings.filter(m => m.in === d1);
+                const targets = mapped.length ? mapped.map(m => m.out) : (router.passCC ? [d1] : []);
+                targets.forEach(cc => {
+                    midiOutput.send([0xB0, cc, d2]);
+                    syncUIFromSentCC(cc, d2);
+                });
+                setRouterActivity(targets.length ? `CC ${d1} = ${d2} → Orbita CC ${targets.join(', ')}` : `CC ${d1} = ${d2} (not mapped)`);
+            }
+        }
+
+        function buildRouterMappings() {
+            const list = document.getElementById('routerMappings');
+            list.innerHTML = router.mappings.map((m, i) => `
+                <div class="map-row">
+                    <input type="number" class="number-input" min="0" max="127" placeholder="CC" value="${m.in ?? ''}" data-map-in="${i}">
+                    <button class="btn-small${routerLearnIndex === i ? ' learning' : ''}" data-map-learn="${i}" type="button">${routerLearnIndex === i ? 'Turn a knob…' : 'Learn'}</button>
+                    <span class="map-arrow">→</span>
+                    <select class="select" data-map-out="${i}">${routerTargetOptions(m.out)}</select>
+                    <button class="btn-small" data-map-remove="${i}" type="button" title="Remove">×</button>
+                </div>
+            `).join('') || '<p class="view-note">No mappings yet.</p>';
+
+            list.querySelectorAll('[data-map-in]').forEach(el => el.addEventListener('change', () => {
+                const v = parseInt(el.value);
+                router.mappings[+el.dataset.mapIn].in = (v >= 0 && v <= 127) ? v : null;
+                saveRouterSettings();
+            }));
+            list.querySelectorAll('[data-map-out]').forEach(el => el.addEventListener('change', () => {
+                router.mappings[+el.dataset.mapOut].out = parseInt(el.value);
+                saveRouterSettings();
+            }));
+            list.querySelectorAll('[data-map-learn]').forEach(el => el.addEventListener('click', () => {
+                const i = +el.dataset.mapLearn;
+                routerLearnIndex = routerLearnIndex === i ? -1 : i;
+                buildRouterMappings();
+            }));
+            list.querySelectorAll('[data-map-remove]').forEach(el => el.addEventListener('click', () => {
+                router.mappings.splice(+el.dataset.mapRemove, 1);
+                routerLearnIndex = -1;
+                saveRouterSettings();
+                buildRouterMappings();
+            }));
+        }
+
+        function setRouterEnabled(on) {
+            router.enabled = on;
+            setSwitchEl(document.getElementById('routerToggle'), on);
+            document.getElementById('railDotRouter').classList.toggle('on', on);
+            addLog(on ? `🔀 MIDI Router ON${router.inputName ? ': ' + router.inputName : ' (no input selected)'}` : '🔀 MIDI Router OFF', 'system', 'system');
+        }
+
+        function initRouter() {
+            loadRouterSettings();
+            const chSel = document.getElementById('routerChannelSelect');
+            chSel.innerHTML = '<option value="0">All channels</option>' +
+                Array.from({ length: 16 }, (_, i) => `<option value="${i + 1}">Channel ${i + 1}</option>`).join('');
+            chSel.value = String(router.channel);
+            setSwitchEl(document.getElementById('routerNotesToggle'), router.notes);
+            setSwitchEl(document.getElementById('routerPassCCToggle'), router.passCC);
+            buildRouterMappings();
+
+            document.getElementById('routerToggle').addEventListener('click', () => setRouterEnabled(!router.enabled));
+            document.getElementById('routerInputSelect').addEventListener('change', function() {
+                router.inputName = this.value;
+                saveRouterSettings();
+                attachRouterInput();
+                addLog(`🔀 Router input: ${this.value || 'none'}`, 'system', 'system');
+            });
+            chSel.addEventListener('change', function() { router.channel = parseInt(this.value); saveRouterSettings(); });
+            document.getElementById('routerNotesToggle').addEventListener('click', function() {
+                router.notes = !router.notes; setSwitchEl(this, router.notes); saveRouterSettings();
+            });
+            document.getElementById('routerPassCCToggle').addEventListener('click', function() {
+                router.passCC = !router.passCC; setSwitchEl(this, router.passCC); saveRouterSettings();
+            });
+            document.getElementById('routerAddMapping').addEventListener('click', () => {
+                router.mappings.push({ in: null, out: 37 });
+                routerLearnIndex = router.mappings.length - 1;
+                saveRouterSettings();
+                buildRouterMappings();
+            });
+        }
+
+        // Save button
+        document.getElementById('saveBtn').addEventListener('click', function() {
+            sendCC(99, 127);
+            addLog('💾 Settings saved to device memory', 'system', 'system');
+        });
+
+        // Clear monitor
+        document.getElementById('clearMonitor').addEventListener('click', function() {
+            document.getElementById('midiMonitor').innerHTML = '';
+        });
+
+        // Monitor drawer
+        document.getElementById('monitorRailItem').addEventListener('click', function() {
+            document.getElementById('monitorDrawer').classList.toggle('open');
+        });
+        document.getElementById('closeMonitorBtn').addEventListener('click', function() {
+            document.getElementById('monitorDrawer').classList.remove('open');
+        });
+
+        // Rail / view navigation
+        document.querySelectorAll('.rail-item[data-view]').forEach(item => {
+            item.addEventListener('click', () => showView(item.dataset.view));
+        });
+        document.getElementById('overflowBtn').addEventListener('click', function() {
+            showView(currentView === 'extra' ? lastNonExtraView : 'extra');
+        });
+
+        document.getElementById('clockAutomationToggle').addEventListener('click', toggleClockAutomation);
+
+        document.getElementById('ticksPerBarInput').addEventListener('change', function() {
+            ticksPerBar = Math.max(1, parseInt(this.value) || 96);
+            this.value = ticksPerBar;
+            clockAutomation.tickCount = 0;
+            updateClockAutomationReadout();
+            addLog(`🔁 Ticks per Bar set to ${ticksPerBar}`, 'system', 'system');
+        });
+        document.getElementById('ccToNotesToggle').addEventListener('click', toggleCcToNotes);
+
+        document.getElementById('ccToNotesDivisionSelect').addEventListener('change', function() {
+            ccToNotesDivision = parseInt(this.value);
+            ccToNotesTickCount = 0;
+            addLog(`🎹 CC to Notes read rate: ${ccToNotesDivision}x per bar`, 'system', 'system');
+        });
+
+        document.getElementById('ccToNotesOutputSelect').addEventListener('change', function() {
+            if (!this.value || !midiAccess) {
+                ccToNotesOutput = null;
+                return;
+            }
+            ccToNotesOutput = midiAccess.outputs.get(this.value);
+            addLog(`🎹 CC to Notes output: ${ccToNotesOutput ? ccToNotesOutput.name : 'none'}`, 'system', 'system');
+        });
+
+        // Scale mapping controls
+        document.getElementById('scaleSelect').addEventListener('change', function() {
+            mappingSettings.scale = this.value;
+            recomputeAllMappings();
+        });
+
+        document.getElementById('rootNoteSelect').addEventListener('change', function() {
+            mappingSettings.root = parseInt(this.value);
+            recomputeAllMappings();
+        });
+
+        document.getElementById('trackSyncToggle').addEventListener('click', function() {
+            mappingSettings.sync = !mappingSettings.sync;
+            setTrackSyncButton();
+            recomputeAllMappings();
+        });
+
+        // Filter checkboxes
+        document.getElementById('filterInNotes').addEventListener('change', updateFilters);
+        document.getElementById('filterInCC').addEventListener('change', updateFilters);
+        document.getElementById('filterInRealtime').addEventListener('change', updateFilters);
+        document.getElementById('filterInOther').addEventListener('change', updateFilters);
+        document.getElementById('filterOutNotes').addEventListener('change', updateFilters);
+        document.getElementById('filterOutCC').addEventListener('change', updateFilters);
+        document.getElementById('filterOutRealtime').addEventListener('change', updateFilters);
+        document.getElementById('filterOutOther').addEventListener('change', updateFilters);
+
+        // ========================================
+        // INITIALIZATION
+        // ========================================
+        createTrackControls();
+        initAccordions();
+        buildScaleSelect();
+        buildRootNoteSelect();
+        setTrackSyncButton();
+        recomputeAllMappings();
+        for (let t = 0; t < 4; t++) updateAccordionSummary(t);
+        buildHelpPage();
+        initRouter();
+        showView('track0');
+        initMIDI();
+    </script>
+</body>
+</html>
