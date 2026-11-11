@@ -131,6 +131,8 @@
         .control-row:last-child { border-bottom: none; }
         .row-label { width: 168px; flex-shrink: 0; color: var(--muted); font-size: 13px; }
         .control-row .switch { margin-left: auto; }
+        .row-cc { font-family: var(--font-mono); font-size: 11px; opacity: .7; margin-left: 4px; }
+        .control-row.inactive { opacity: .4; }
         .row-value {
             width: 68px; flex-shrink: 0; text-align: right;
             font-family: var(--font-mono); font-weight: 600; font-size: 13px;
@@ -172,7 +174,7 @@
             border: 1px solid var(--border); border-radius: var(--radius);
             padding: 8px 30px 8px 12px;
             color: var(--text); font-size: 13px; cursor: pointer;
-            flex: 1; max-width: 280px;
+            flex: 1; min-width: 0; max-width: 280px;
         }
         .select option, .select optgroup { background: var(--surface); color: var(--text); }
 
@@ -187,7 +189,7 @@
         /* ===== Components: slider ===== */
         .slider {
             -webkit-appearance: none; appearance: none;
-            flex: 1; height: 2px; background: var(--border); outline: none; cursor: pointer;
+            flex: 1; min-width: 0; height: 2px; background: var(--border); outline: none; cursor: pointer;
         }
         .slider::-webkit-slider-thumb {
             -webkit-appearance: none;
@@ -638,10 +640,10 @@
 
         // Track state storage
         const trackState = {
-            0: { on: true, noteLength: 260, velocity: 87, channel: 1, mode: 0, probability: 127, veloRange: 0, cc: 102, brightnessCC: 106 },
-            1: { on: true, noteLength: 260, velocity: 87, channel: 1, mode: 0, probability: 127, veloRange: 0, cc: 103, brightnessCC: 107 },
-            2: { on: true, noteLength: 260, velocity: 87, channel: 1, mode: 0, probability: 127, veloRange: 0, cc: 104, brightnessCC: 108 },
-            3: { on: true, noteLength: 260, velocity: 87, channel: 1, mode: 0, probability: 127, veloRange: 0, cc: 105, brightnessCC: 109 }
+            0: { on: true, noteLength: 260, velocity: 87, channel: 1, mode: 0, probability: 127, veloRange: 0, cc: 102, brightnessCC: 106, hueOn: true, brightnessOn: true },
+            1: { on: true, noteLength: 260, velocity: 87, channel: 1, mode: 0, probability: 127, veloRange: 0, cc: 103, brightnessCC: 107, hueOn: true, brightnessOn: true },
+            2: { on: true, noteLength: 260, velocity: 87, channel: 1, mode: 0, probability: 127, veloRange: 0, cc: 104, brightnessCC: 108, hueOn: true, brightnessOn: true },
+            3: { on: true, noteLength: 260, velocity: 87, channel: 1, mode: 0, probability: 127, veloRange: 0, cc: 105, brightnessCC: 109, hueOn: true, brightnessOn: true }
         };
 
         // ========================================
@@ -1199,6 +1201,10 @@
             }
             const ccNumberSlider = document.getElementById(`ccNumber${track}`);
             if (ccNumberSlider) ccNumberSlider.disabled = mode !== 1;
+            ['hueRow', 'brightnessRow'].forEach(id => {
+                const row = document.getElementById(`${id}${track}`);
+                if (row) row.classList.toggle('inactive', mode !== 1);
+            });
             const brightnessSlider = document.getElementById(`brightnessCC${track}`);
             if (brightnessSlider) brightnessSlider.disabled = mode !== 1;
         }
@@ -1352,6 +1358,14 @@
                                         <button class="seg-btn" id="modeCC${i}" type="button">CC</button>
                                     </div>
                                 </div>
+                                <div class="control-row" id="hueRow${i}">
+                                    <div class="row-label">Send hue <span class="row-cc">CC ${trackState[i].cc}</span></div>
+                                    <button class="switch on" id="hueToggle${i}" role="switch" aria-checked="true"><span class="switch-dot"></span></button>
+                                </div>
+                                <div class="control-row" id="brightnessRow${i}">
+                                    <div class="row-label">Send brightness <span class="row-cc">CC ${trackState[i].brightnessCC}</span></div>
+                                    <button class="switch on" id="brightnessToggle${i}" role="switch" aria-checked="true"><span class="switch-dot"></span></button>
+                                </div>
                                 <div class="control-row">
                                     <div class="row-label">MIDI Channel</div>
                                     <input type="range" class="slider" id="channel${i}" min="0" max="16" value="1">
@@ -1431,6 +1445,8 @@
                                     <div class="debug-row"><span>Color Mapping</span><span>CC ${50 + i * 7}–${50 + i * 7 + 6}</span></div>
                                     <div class="debug-row"><span>Hue CC Number (set)</span><span>CC ${78 + i}</span></div>
                                     <div class="debug-row"><span>Brightness CC Number (set)</span><span>CC ${83 + i}</span></div>
+                                    <div class="debug-row"><span>Send Hue on/off</span><span>CC ${87 + i}</span></div>
+                                    <div class="debug-row"><span>Send Brightness on/off</span><span>CC ${91 + i}</span></div>
                                     <div class="debug-row"><span>Motor Direction</span><span>CC 82</span></div>
                                 </div>
                             </div>
@@ -1448,6 +1464,9 @@
                 document.getElementById(`modeCC${i}`).addEventListener('click', () => setMode(i, 1));
                 document.getElementById(`ccNumber${i}`).addEventListener('input', (e) => updateCCNumber(i, e.target.value));
                 document.getElementById(`brightnessCC${i}`).addEventListener('input', (e) => updateBrightnessCC(i, e.target.value));
+                document.getElementById(`hueToggle${i}`).addEventListener('click', () => setHueOn(i, !trackState[i].hueOn));
+                document.getElementById(`brightnessToggle${i}`).addEventListener('click', () => setBrightnessOn(i, !trackState[i].brightnessOn));
+                setModeButtons(i, trackState[i].mode);
                 document.getElementById(`noteLength${i}`).addEventListener('input', (e) => updateNoteLength(i, e.target.value));
                 document.getElementById(`velocity${i}`).addEventListener('input', (e) => updateVelocity(i, e.target.value));
                 document.getElementById(`channel${i}`).addEventListener('input', (e) => updateChannel(i, e.target.value));
@@ -1690,14 +1709,40 @@
         function updateCCNumber(track, value) {
             trackState[track].cc = parseInt(value);
             document.getElementById(`ccNumber${track}Value`).textContent = value;
+            updateCCLabels(track);
             const cc = 78 + track;
             sendCC(cc, parseInt(value));
         }
 
         // Brightness CC number: CC 83-86 = Track 1-4 (same order as Hue CC 78-81)
+        // Hue / brightness send on/off: CC 87-90 hue, CC 91-94 brightness = Track 1-4
+        function setHueSwitch(track, on) {
+            trackState[track].hueOn = on;
+            setSwitchEl(document.getElementById(`hueToggle${track}`), on);
+        }
+        function setBrightnessSwitch(track, on) {
+            trackState[track].brightnessOn = on;
+            setSwitchEl(document.getElementById(`brightnessToggle${track}`), on);
+        }
+        function setHueOn(track, on) {
+            setHueSwitch(track, on);
+            sendCC(87 + track, on ? 127 : 0);
+        }
+        function setBrightnessOn(track, on) {
+            setBrightnessSwitch(track, on);
+            sendCC(91 + track, on ? 127 : 0);
+        }
+        function updateCCLabels(track) {
+            const h = document.querySelector(`#hueRow${track} .row-cc`);
+            const b = document.querySelector(`#brightnessRow${track} .row-cc`);
+            if (h) h.textContent = `CC ${trackState[track].cc}`;
+            if (b) b.textContent = `CC ${trackState[track].brightnessCC}`;
+        }
+
         function updateBrightnessCC(track, value) {
             trackState[track].brightnessCC = parseInt(value);
             document.getElementById(`brightnessCC${track}Value`).textContent = value;
+            updateCCLabels(track);
             sendCC(83 + track, parseInt(value));
         }
 
@@ -1780,7 +1825,9 @@
             { base: 42, name: 'Probability',          values: '0 never … 127 always' },
             { base: 46, name: 'Velocity range',       values: 'random ± added to velocity' },
             { base: 78, name: 'Hue CC number',        values: 'CC number Orbita sends hue on (default 102–105)' },
-            { base: 83, name: 'Brightness CC number', values: 'CC number Orbita sends brightness on (default 106–109)' }
+            { base: 83, name: 'Brightness CC number', values: 'CC number Orbita sends brightness on (default 106–109)' },
+            { base: 87, name: 'Send hue on / off',        values: 'CC mode: 65–127 send hue · 0–64 don\'t (default on)' },
+            { base: 91, name: 'Send brightness on / off', values: 'CC mode: 65–127 send brightness · 0–64 don\'t (default on)' }
         ];
         const ORBITA_GLOBAL_PARAMS = [
             { cc: 36,  name: 'Motor start / stop',  values: '65–127 start · 0–64 stop', map: true },
@@ -1830,15 +1877,19 @@
                 setTrackButton(t, trackState[t].on);
                 return;
             }
+            if (cc >= 87 && cc <= 90) { setHueSwitch(cc - 87, value > 64); return; }
+            if (cc >= 91 && cc <= 94) { setBrightnessSwitch(cc - 91, value > 64); return; }
             if (cc >= 83 && cc <= 86) {
                 const t = cc - 83;
                 trackState[t].brightnessCC = value;
+                updateCCLabels(t);
                 setSlider(`brightnessCC${t}`, value, value);
                 return;
             }
             if (cc >= 78 && cc <= 81) {
                 const t = cc - 78;
                 trackState[t].cc = value;
+                updateCCLabels(t);
                 setSlider(`ccNumber${t}`, value, value);
                 return;
             }
@@ -1876,7 +1927,7 @@
         function routerTargetOptions(selected) {
             const opts = [];
             ORBITA_GLOBAL_PARAMS.filter(p => p.map).forEach(p => opts.push([p.cc, `${p.name} (CC ${p.cc})`]));
-            ORBITA_TRACK_PARAMS.filter(p => p.base < 78).forEach(p => {
+            ORBITA_TRACK_PARAMS.filter(p => p.base < 78 || p.base >= 87).forEach(p => {
                 for (let t = 0; t < 4; t++) opts.push([p.base + t, `T${t + 1} ${p.name} (CC ${p.base + t})`]);
             });
             return opts.map(([cc, label]) => `<option value="${cc}"${cc === selected ? ' selected' : ''}>${label}</option>`).join('');
