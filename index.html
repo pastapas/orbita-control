@@ -505,6 +505,7 @@
                             <div class="section-block">
                                 <h2 class="section-heading">On the device</h2>
                                 <ul class="help-list">
+                                    <li><b>Buttons O and A</b> — send CC 95 / CC 96 on channel 1 (127 pressed, 0 released). In this firmware they have no other function: the looper and the MIDI channel / CC setup on the device are off — set channels and modes on this page.</li>
                                     <li><b>Encoder button</b> — start / stop the motor.</li>
                                     <li><b>Turn the encoder</b> — speed. Keep turning below minimum speed (3 steps) to reverse direction.</li>
                                     <li><b>Hold the encoder button while powering on</b> — reset to factory settings.</li>
@@ -1856,6 +1857,8 @@
                 ['Hue CC 102–105', 'Track channel', 'CC mode: color hue, 0–127, only when it changes. Track 1–4.'],
                 ['Brightness CC 106–109', 'Track channel', 'CC mode: brightness, 0–127, only when it changes. Track 1–4.'],
                 ['Notes (black/white)', 'Track channel', 'No-magnet B/W mode: first color note on when dark, off when light.'],
+                ['CC 95 = 127 / 0', '1', 'Button O pressed / released.'],
+                ['CC 96 = 127 / 0', '1', 'Button A pressed / released.'],
                 ['Clock, Start, Stop', '—', 'Clock follows the disc: 96 ticks per rotation (12 magnets × 8). Start / Stop with the motor.'],
                 ['CC 36 = 100 / 0', '15', 'Motor started / stopped (feedback to this page).'],
                 ['CC 20–23 = 100 / 0', '15', 'Track 1–4 on / off from the buttons (feedback).'],
